@@ -20,7 +20,8 @@ class AudioTests(unittest.TestCase):
                 "#include <cstddef>\n#include <functional>\n"
                 "namespace ultramodern { struct audio_callbacks_t {\n"
                 "void(*queue)(int16_t*,size_t);size_t(*remaining)();void(*rate)(uint32_t);};\n"
-                "uint64_t vclock_now_ns();uint64_t vclock_schedule(uint64_t,std::function<void()>);void ai_buffer_done();}\n"
+                "uint64_t vclock_now_ns();uint64_t vclock_schedule(uint64_t,std::function<void()>);"
+                "void ai_buffer_done();}\n"
                 ""
             )
             (p / "SDL.h").write_text(r"""
@@ -50,7 +51,8 @@ static int submissions=0;static int closed=0;static bool bad=false;static Uint32
 static uint64_t vnow=0;static int ai=0;
 static std::vector<std::pair<uint64_t,std::function<void()>>> events;
 uint64_t ultramodern::vclock_now_ns(){return vnow;}
-uint64_t ultramodern::vclock_schedule(uint64_t when,std::function<void()> fn){events.emplace_back(when,std::move(fn));return events.size();}
+uint64_t ultramodern::vclock_schedule(uint64_t when,std::function<void()> fn){
+events.emplace_back(when,std::move(fn));return events.size();}
 void ultramodern::ai_buffer_done(){++ai;}
 void SDL_CloseAudioDevice(SDL_AudioDeviceID){++closed;}
 SDL_AudioDeviceID SDL_OpenAudioDevice(const char*n,int capture,SDL_AudioSpec*w,SDL_AudioSpec*h,int flags){
