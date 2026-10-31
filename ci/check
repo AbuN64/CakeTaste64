@@ -3,5 +3,6 @@
 # Not here: the N64Recomp oracle build, which needs the ROM and the rig.
 set -eu
 cd "$(dirname "$0")/.."
+ci/abucache-audit
 ruff check src tests
 PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}" python3 -m unittest discover -s tests

@@ -57,3 +57,9 @@ pip install -e '.[dev]' && python -m unittest discover -s tests && ruff check sr
 Released under [GNU GPL version 3 or later](LICENSE).
 
 Oracle entry capture accepts `taste repro capture --condition EXPR`. The GDB expression must be true at the entry; `--hit` counts only matching entries. Use explicit host symbols or entry registers to select the replay poll and arguments. The condition is recorded and separates both successful captures and cached misses. An invalid expression fails capture.
+
+## One owner per cache
+
+AbuCache64 owns every cache, content store, worker slot, pool, executor and timing path (abucache.compile, store,
+slots, pool, stages). `ci/abucache-audit`, run by the check entry point, refuses a new one here naming that owner; the
+files it still lists move to abucache and leave the list, nothing joins it.
