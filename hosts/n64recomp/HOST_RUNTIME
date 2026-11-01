@@ -1,11 +1,10 @@
-# Libultra functions the host's device model runs through the runtime's <name>_recomp: the host owns the hardware they
-# touch (the VI manager is System_CreateVideoManager's adapter, the RSP is the runtime's), so the kept original would read
-# and write guest VI/SP state nothing initialises. recomp_profile.py adds each to the profile's symbol_names at the
-# address the decomp gives the name. One per line: name, then the evidence.
-osViGetCurrentFramebuffer returned 0 in all 6 sampled calls with the original kept (job rig-20261101T131906Z), then Sched_HandleRetrace faulted at va 3
-osViSwapBuffer entered at boot by the guest (job rig-20261101T132452Z); its original writes the context __osViInit never set up
-osViBlack entered at boot by the guest (job rig-20261101T132452Z); its original writes the same VI context
-osViSetYScale writes the same VI context as osViSwapBuffer and osViBlack
-osSpTaskStartGo entered at boot by the guest (job rig-20261101T132452Z); its original starts the RSP through registers the host does not model, graphics_tasks=0
-osSpTaskYield starts the same SP path as osSpTaskStartGo
-osSpTaskYielded reads the SP state osSpTaskStartGo's runtime version keeps
+# Hardware families the host's device model owns, one per line: a regex that must match a whole libultra name, then the
+# evidence. A kept original of one of them would read and write guest hardware state nothing initialises, so every function
+# of a family that the decomp names and that N64Recomp lists as reimplemented (the runtime defines its <name>_recomp) runs
+# through the runtime's version. recomp_profile.py adds each at the address the decomp gives its name; a family that
+# matches none stops the build. The other two hardware paths are the host's own adapters over the kept originals and need
+# no line: the PI (pi_adapter.cpp wraps __osPiRawStartDma_kept) and the SI (the controller hooks wrap osCont*_kept).
+osVi\w*	the VI is the runtime's: osViGetCurrentFramebuffer returned 0 in all 6 sampled calls with the original kept, then Sched_HandleRetrace faulted at va 3 (job rig-20261101T131906Z), and osViSwapBuffer and osViBlack wrote the VI context __osViInit never set up (job rig-20261101T132452Z)
+(?:__)?osSp\w*	the RSP is the runtime's: osSpTaskStartGo's original starts it through registers the host does not model, graphics_tasks=0 (job rig-20261101T132452Z); osSpTaskYield, osSpTaskYielded and __osSpSetPc read and write the same SP state
+osDp\w*	the RDP is the runtime's: by the same rule as the VI and the SP, osDpSetNextBuffer's original writes DPC registers the host does not model
+osVirtualToPhysical	the TLB is the host's: by the same rule, a mapped address must translate through the host's TLB model, not a table the original reads
