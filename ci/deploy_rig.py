@@ -1,51 +1,55 @@
 #!/usr/bin/env python3
-"""Deploys the landed CakeTaste64 commit to the rig oracle through Job Invoke: `.deploy` runs this after Land, with the
-landed SHA in LANDED_Projects_AbuN64_CakeTaste64 and the landing card as the arguments `--Subject.Board <board>
---Subject.Card <card>`, which go straight to Job Invoke so the deploy's jobs run as the landing card's jobs. Any refusal or failed step prints one line on stderr and exits 1. Every rig step is one
-`mo-butlermaster Job Invoke --Host rig --Worktree <repo>@<sha>` job at the exact SHA (run in its Worktree with JOBS set
-to Dos's width), so Dos admits the work and the per-host activation permit serializes deploys: no ssh, slot or lock.
+"""The rig deploy steps of CakeTaste64: one step per `.deploy` line, each an entry point of this file. The close runs
+them in file order on the rig at the landed revision, from the root of the tree, with
+LANDED_Projects_AbuN64_CakeTaste64 set and `deploy-env TOOLKIT=<rig toolkit link>` in the environment; it appends its
+own landing arguments, which no step reads. A step prints its facts and exits 0, or prints one line on stderr and
+exits 1; it calls no other tool of the close. cake-taste-64 is pinned by no other repository: the toolkit's installed
+`decomp tools deploy` installs the package `cake-taste-64` at the landed SHA and carries every other installed package
+over as it is.
 
-  1. the SHA must be on gitea main, which is fetched into this checkout so Job Invoke can push the SHA to the rig. When
-     main has moved past the landed SHA to a descendant, main's head is deployed instead and the log says the older
-     deploy deferred; a SHA that is not on main refuses before any job;
-  2. the suite gate, job one: the full test suite (unittest discover over tests/) runs in the Worktree with its src
-     first on the import path. The imported cake_taste path is printed and must lie inside the Worktree. Any
-     failure refuses (one line naming the first failing test) with the live oracle untouched;
-  3. when the live oracle already is <Toolkit>.<sha>, nothing is built or flipped;
-  4. otherwise job two is the Activation (Toolkit = the oracle link, Revision = the SHA): it builds n64host into
-     $BUILD (<Toolkit>.<sha>, pinned deps copied from ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with
-     the build tool at -j"$JOBS" and runs the oracle self-check on that build: boot-idle twice, the two state hashes
-     must be equal. Only on exit 0 does ButlerMaster flip the live link atomically, keeping the old one as
-     <Toolkit>.previous;
-  5. readback, always: the last job runs the self-check again through the live link, and the link must read
-     <Toolkit>.<sha>."""
+  suite      the full test suite (unittest discover over tests/) runs in the tree with its src first on the import path.
+             The imported cake_taste path is printed and must lie inside the tree. Any failure refuses (one line naming
+             the first failing test) with every live link untouched;
+  name       the toolkit's own `decomp tools name` (AbuDecomp64's engine owns the rule; this repository holds no copy)
+             answers the toolkit build's NAME, a digest of every package commit the new toolkit holds, never the SHA
+             alone. A live toolkit whose decomp lacks `tools name` refuses: deploy AbuDecomp64 first;
+  install    the toolkit activation (`activate`, BUILD is <toolkit>.<SHA>): `decomp tools deploy --package cake-taste-64
+             --sha SHA` builds a fresh venv through a private `<toolkit>-stage` link and BUILD is linked to it; on exit
+             0 the close switches the toolkit link to BUILD;
+  installed  the toolkit link resolves to BUILD and the installed commit of cake-taste-64 equals the landed SHA. A
+             mismatch refuses (fix forward, no rollback);
+  oracle     the oracle activation (BUILD is <oracle>.<SHA>): builds n64host into BUILD (pinned deps copied from
+             ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with the build tool at -j"$JOBS" and runs the
+             oracle self-check on that build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does
+             the close flip the oracle link; a build that is the live target already is a no-op;
+  readback   the self-check again through the live oracle link, which must read <oracle>.<SHA>.
 
-import argparse
+  deploy-env TOOLKIT=/home/abu/venv-decomp
+  rig run ci/deploy_rig.py suite
+  rig run ci/deploy_rig.py name
+  rig activate ci/deploy_rig.py /home/abu/venv-decomp install
+  rig run ci/deploy_rig.py installed
+  rig activate ci/deploy_rig.py /home/abu/rig-state/tas/live/oracle oracle
+  rig run ci/deploy_rig.py readback"""
+
 import json
 import os
 import re
 import subprocess
 import sys
 from collections.abc import Callable
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
-ROOT = Path(__file__).resolve().parents[1]
 ENV = "LANDED_Projects_AbuN64_CakeTaste64"
-HOST = "rig"
-REPO = "Projects/AbuN64/CakeTaste64"
-GITEA = "http://10.10.10.130:18556/Projects/CakeTaste64.git"
 PACKAGE = "cake_taste"
 PYTHON = "/usr/bin/python3"
 TOOLKIT = "/home/abu/rig-state/tas/live/oracle"
 SHA = re.compile(r"[0-9a-f]{40}")
+NAME_RE = re.compile(r"[0-9a-f]{12}")
 HASH = re.compile(r"readback-hash: ([0-9a-f]{16})")
 
-# git(args) runs git here and returns (exit code, output).
-Seam = Callable[..., "tuple[int, str]"]
-# job(argv, revision=None) runs one Job Invoke at the deploy's SHA and returns (job exit, the job's log text); a given
-# revision makes it the toolkit Activation of <Toolkit>.<revision>. jobs_at(sha) binds the SHA and answers the job.
-Job = Callable[..., "tuple[int, str]"]
-JobsAt = Callable[[str], Job]
+# bash(script, args) runs one of the scripts below and returns its exit code and, when captured, its stdout.
+Bash = Callable[..., "tuple[int, str]"]
 
 # selfcheck HOST: boot-idle twice through the oracle binary HOST, one `readback-hash: <first-16-hex>` line per run (env
 # as tas_oracle.start); the job fails when the two state hashes differ.
@@ -81,14 +85,18 @@ SELFCHECK = r"""selfcheck() {
 }
 """
 
-# build: the Activation job, run in the Worktree at the SHA with BUILD=<Toolkit>.<sha> and JOBS set. The build tree and
+# ORACLE: the oracle activation, run in the tree at the SHA with BUILD=<oracle>.<sha> and JOBS set. The build tree and
 # copied deps live only while it builds; exit 0 (built and self-checked) is the gate for the flip, and any other exit
 # removes $BUILD so the next activation of the sha starts clean. The copied deps are reset to their pins first: the
 # shared copy may carry an older patch set, and deps.sh applies this SHA's patches onto the pristine pin.
-BUILD = (
+ORACLE = (
     SELFCHECK
     + r"""set -eu
 sha=$(git rev-parse HEAD)
+if [ -x "$BUILD/n64host" ] && [ "$(readlink -f "__TOOLKIT__")" = "$(readlink -f "$BUILD")" ]; then
+  echo "oracle: $BUILD is live already, build skipped"
+  exit 0
+fi
 src=$PWD
 mkdir "$BUILD"
 trap 'rc=$?; test "$rc" = 0 || rm -rf "$BUILD"' EXIT
@@ -123,12 +131,65 @@ selfcheck "$BUILD/n64host"
 """
 ).replace("__TOOLKIT__", TOOLKIT)
 
+
+# NAME runs in the tree before the activation and answers the toolkit build's name: the engine's JSON envelope on
+# stdout, whose result.name is the digest of the whole content. Arguments: SHA TOOLKIT.
+NAME = r"""set -u
+sha=$1 toolkit=$2
+(cd "$HOME" && "$toolkit/bin/decomp" tools name --package cake-taste-64 --sha "$sha" --carry-from "$toolkit") \
+  || { echo "name-error: decomp tools name exit $? (the live decomp needs it: deploy AbuDecomp64 first)" >&2
+       exit 1; }
+"""
+
+# INSTALL runs inside the toolkit activation with BUILD (<toolkit>.<SHA>) set by the close. The stage link starts at the
+# live toolkit, so the packages `decomp tools deploy` carries over are the live ones; it builds `<toolkit>-stage.<name>`
+# (or -N when that name is taken) and swaps only the stage link. BUILD becomes a link to that venv: the close's switch
+# is the only way a venv goes live. Arguments: SHA TOOLKIT NAME.
+INSTALL = r"""set -u
+sha=$1 toolkit=$2 name=$3
+: "${BUILD:?the close sets BUILD for an activation}"
+stage=$toolkit-stage
+ln -sfn "$(readlink -f "$toolkit")" "$stage" || exit 1
+(cd "$HOME" && "$toolkit/bin/decomp" tools deploy --package cake-taste-64 --sha "$sha" --venv "$stage") \
+  || { echo "deploy-error: decomp tools deploy exit $?" >&2; exit 1; }
+built=$(readlink -f "$stage")
+case $built in
+  "$stage.$name" | "$stage.$name"-[0-9]*) ;;
+  *) echo "deploy-error: $stage reads $built, not the build $name of $sha" >&2; exit 1 ;;
+esac
+ln -sfn "$built" "$BUILD" || exit 1
+echo "deploy-build: $built"
+"""
+
+# INSTALLED: the venv link resolves to the build and the installed commit of cake-taste-64 equals the SHA.
+# Arguments: SHA VENV BUILD.
+INSTALLED = r"""set -u
+sha=$1 toolkit=$2 build=$3
+live=$(readlink -f "$toolkit") || exit 9
+want=$(readlink -f "$build") || exit 9
+[ "$live" = "$want" ] || { echo "readback: $toolkit reads $live, not $build ($want)" >&2; exit 1; }
+"$toolkit/bin/python" - "$sha" <<'PY'
+import importlib.metadata
+import json
+import sys
+
+try:
+    direct = json.loads(importlib.metadata.distribution("cake-taste-64").read_text("direct_url.json") or "{}")
+    installed = direct.get("vcs_info", {}).get("commit_id", "none")
+except importlib.metadata.PackageNotFoundError:
+    installed = "not installed"
+print(f"readback-pin: cake-taste-64 {installed}", flush=True)
+if installed != sys.argv[1]:
+    sys.exit(f"readback: cake-taste-64 is {installed}, the landed commit is {sys.argv[1]}")
+PY
+"""
+
 # live: the live link's resolved target, for the already-live no-op path. A missing link, or one whose target holds no
 # executable n64host, exits 1 with the cause on stderr (readlink -f alone answers a path even for a dangling link).
 LIVE = f"""link={TOOLKIT}
 test -L "$link" || {{ echo "live oracle $link is not a symlink" >&2; exit 1; }}
 target=$(readlink -f "$link")
-test -x "$target/n64host" || {{ echo "live oracle link $link is broken: $target holds no executable n64host" >&2; exit 1; }}
+test -x "$target/n64host" || {{ echo "live oracle link $link is broken: $target has no n64host" >&2; exit 1; }}
 echo "readback-live: $target"
 """
 
@@ -216,65 +277,21 @@ if failed or not passed:
 """
 
 
+
+
 class Refused(Exception):
     """One line cause of a refusal or failed step."""
 
 
-def git(*args: str) -> tuple[int, str]:
-    done = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=False)
-    return done.returncode, (done.stdout + done.stderr).strip()
-
-
-def butler_job(board: str, card: str, sha: str) -> Job:
-    """The job seam: `mo-butlermaster Job Invoke` of the card at sha, answering (exit, log text)."""
-
-    def job(argv: list[str], revision: str | None = None) -> tuple[int, str]:
-        request = {"Host": HOST, "Subject": {"Board": board, "Card": card}, "Worktree": f"{REPO}@{sha}", "Argv": argv}
-        if revision:
-            request["Activation"] = {"Toolkit": TOOLKIT, "Revision": revision}
-        done = subprocess.run(
-            ["mo-butlermaster", "Job", "Invoke", "--output=json", "--input=json"],
-            input=json.dumps({"Metadata": {}, "Request": request}),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        try:
-            answer = json.loads(done.stdout)["Response"]
-        except (ValueError, KeyError) as bad:
-            cause = last_line(done.stderr, "no output")
-            raise Refused(f"Job Invoke answered no JSON (exit {done.returncode}): {cause}") from bad
-        if "Error" in answer:
-            error = answer["Error"]
-            raise Refused(f"Job Invoke refused {error['Code']}: {error.get('Stack') or error['Message']}")
-        return answer["Exit"], Path(answer["Log"]).read_text(errors="replace")
-
-    return job
-
-
-def landed_sha(environ: dict[str, str]) -> str:
-    sha = environ.get(ENV, "")
-    if not SHA.fullmatch(sha):
-        raise Refused(f"{ENV} is not a 40-hex SHA: {sha!r}")
-    return sha
+def bash(script: str, *args: str, capture: bool = False) -> tuple[int, str]:
+    done = subprocess.run(
+        ["bash", "-c", script, "step", *args], stdout=subprocess.PIPE if capture else None, text=True, check=False
+    )
+    return done.returncode, done.stdout or ""
 
 
 def last_line(text: str, default: object) -> str:
     return text.strip().splitlines()[-1] if text.strip() else str(default)
-
-
-def newest_main(sha: str, git: Seam) -> str:
-    """The SHA to deploy: gitea main's head when it descends from sha (sha itself when it is the head), else Refused.
-    Main is fetched into this checkout, so the head's objects are here for Job Invoke to push."""
-    code, out = git("fetch", "-q", "--no-tags", GITEA, "main")
-    if code:
-        raise Refused(f"cannot fetch gitea main ({GITEA}): {last_line(out, code)}")
-    code, head = git("rev-parse", "FETCH_HEAD")
-    if code or not SHA.fullmatch(head):
-        raise Refused(f"cannot read the fetched gitea main head: {last_line(head, code)}")
-    if git("merge-base", "--is-ancestor", sha, head)[0]:
-        raise Refused(f"{sha[:12]} is not on gitea main")
-    return head
 
 
 def facts(log: str, prefix: str) -> dict[str, str]:
@@ -286,17 +303,44 @@ def facts(log: str, prefix: str) -> dict[str, str]:
     return found
 
 
-def fail(what: str, code: int, log: str) -> Refused:
-    return Refused(f"{what} exit {code}: {last_line(log, 'no output')}")
+def build_name(text: str) -> str:
+    """The name the engine answered: result.name of the JSON envelope on the name step's stdout."""
+    for line in reversed(text.splitlines()):
+        try:
+            name = json.loads(line)["result"]["name"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        if isinstance(name, str) and NAME_RE.fullmatch(name):
+            return name
+    raise Refused(f"the name step answered no build name: {last_line(text, 'no output')}")
 
 
-def suite(sha: str, job: Job) -> list[str]:
-    """The full suite at exactly sha in the Worktree; returns the log lines, raises Refused on any failure."""
-    code, log = job(["bash", "-c", SUITE.replace("__RUNNER__", RUNNER), "suite", PYTHON])
-    found = facts(log, "suite-")
+def landed(environ: dict[str, str]) -> tuple[str, str]:
+    """The landed SHA and the rig toolkit link, each from its own explicit variable."""
+    sha = environ.get(ENV, "")
+    if not SHA.fullmatch(sha):
+        raise Refused(f"{ENV} is not a 40-hex SHA: {sha!r}")
+    toolkit = environ.get("TOOLKIT", "")
+    if not toolkit.startswith("/"):
+        raise Refused(f"TOOLKIT is not an absolute path (a `deploy-env TOOLKIT=<link>` line): {toolkit!r}")
+    return sha, toolkit
+
+
+def name(sha: str, toolkit: str, run: Bash) -> str:
+    code, out = run(NAME, sha, toolkit, capture=True)
+    sys.stdout.write(out)
+    if code:
+        raise Refused(f"name exit {code}: {last_line(out, 'no output')}")
+    return build_name(out)
+
+
+def step_suite(sha: str, toolkit: str, run: Bash) -> None:
+    code, out = run(SUITE.replace("__RUNNER__", RUNNER), PYTHON, capture=True)
+    sys.stdout.write(out)
+    found = facts(out, "suite-")
     for key in ("suite-checkout", "suite-sha", "suite-import"):
         if key not in found:
-            raise Refused(f"suite gate did not start at {sha[:12]} (exit {code}): {last_line(log, 'no output')}")
+            raise Refused(f"suite did not start at {sha[:12]} (exit {code}): {last_line(out, 'no output')}")
     if found["suite-sha"] != sha:
         raise Refused(f"suite ran at {found['suite-sha']}, not the landed {sha}")
     if not PurePosixPath(found["suite-import"]).is_relative_to(found["suite-checkout"]):
@@ -304,87 +348,63 @@ def suite(sha: str, job: Job) -> list[str]:
             f"suite imported {PACKAGE} from {found['suite-import']}, outside its checkout {found['suite-checkout']}"
         )
     if code or "suite-first-failure" in found or "suite-summary" not in found:
-        first = found.get("suite-first-failure") or f"no summary, exit {code}: {last_line(log, 'no output')}"
+        first = found.get("suite-first-failure") or f"no summary, exit {code}: {last_line(out, 'no output')}"
         raise Refused(f"suite failed at {first}: {found.get('suite-summary', 'no summary')}")
-    return [
-        f"{sha[:12]}: suite {found['suite-summary']}",
-        f"{sha[:12]}: suite sha {found['suite-sha']}",
-        f"{sha[:12]}: suite imported {found['suite-import']}",
-    ]
 
 
-def live_target(job: Job) -> str:
-    code, log = job(["bash", "-c", LIVE])
-    target = facts(log, "readback-").get("readback-live", "")
-    if code or not target:
-        raise fail("cannot read the live oracle link", code, log)
-    return target
+def step_name(sha: str, toolkit: str, run: Bash) -> None:
+    sys.stdout.write(f"name: {name(sha, toolkit, run)}\n")
+    sys.stdout.flush()
 
 
-def activate(sha: str, job: Job) -> None:
-    """Job two: the Activation builds <Toolkit>.<sha> and self-checks it; only exit 0 lets it flip the link."""
-    code, log = job(["bash", "-c", BUILD], revision=sha)
+def step_install(sha: str, toolkit: str, run: Bash) -> None:
+    code, _ = run(INSTALL, sha, toolkit, name(sha, toolkit, run))
     if code:
-        raise fail(f"build of {sha[:12]} at {TOOLKIT}.{sha}", code, log)
+        raise Refused(f"install exit {code}, links unchanged")
 
 
-def readback(sha: str, job: Job) -> str:
-    code, log = job(["bash", "-c", READBACK])
-    live = facts(log, "readback-").get("readback-live", "")
-    hashes = HASH.findall(log)
-    if code or len(hashes) != 2:
-        raise fail("readback boot-idle", code, log)
-    if hashes[0] != hashes[1]:
-        raise Refused(f"readback boot-idle state hashes differ: {hashes[0]} {hashes[1]}")
+def step_installed(sha: str, toolkit: str, run: Bash) -> None:
+    code, _ = run(INSTALLED, sha, toolkit, f"{toolkit}.{sha}")
+    if code:
+        raise Refused(f"installed exit {code}")
+
+
+def step_oracle(sha: str, toolkit: str, run: Bash) -> None:
+    code, _ = run(ORACLE, sha)
+    if code:
+        raise Refused(f"oracle build exit {code}, links unchanged")
+
+
+def step_readback(sha: str, toolkit: str, run: Bash) -> None:
+    code, out = run(READBACK, capture=True)
+    sys.stdout.write(out)
+    hashes = HASH.findall(out)
+    if code or len(hashes) != 2 or hashes[0] != hashes[1]:
+        raise Refused(f"readback exit {code}: {last_line(out, 'no output')}")
+    live = facts(out, "readback-").get("readback-live", "")
     if live != f"{TOOLKIT}.{sha}":
-        raise Refused(f"readback: the live oracle must read {TOOLKIT}.{sha}, it reads {live}")
-    return f"readback boot-idle {hashes[0]} {hashes[1]} through {live}"
+        raise Refused(f"the live oracle reads {live}, not {TOOLKIT}.{sha}")
 
 
-def deploy(sha: str, jobs_at: JobsAt, git: Seam) -> list[str]:
-    """Deploys the newest landed main; returns the log lines to print, the readback last. Raises Refused on the first
-    failure."""
-    lines = []
-    head = newest_main(sha, git)
-    if head != sha:
-        lines.append(f"{sha[:12]}: main has moved to {head[:12]}, deploying main's head; the older deploy deferred")
-        sha = head
-    job = jobs_at(sha)
-    lines += suite(sha, job)
-    before = live_target(job)
-    lines.append(f"live oracle before: {before}")
-    if before == f"{TOOLKIT}.{sha}":
-        lines.append(f"{sha[:12]}: the live oracle already reads {before}, build and flip skipped")
-    else:
-        activate(sha, job)
-        lines.append(f"live oracle activated: {TOOLKIT}.{sha} (previous {before} kept as {TOOLKIT}.previous)")
-    lines.append(readback(sha, job))
-    return lines
+STEPS = {
+    "suite": step_suite,
+    "name": step_name,
+    "install": step_install,
+    "installed": step_installed,
+    "oracle": step_oracle,
+    "readback": step_readback,
+}
 
 
-def parse(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="deploy_rig.py", description="Deploys the landed commit to the rig oracle.")
-    parser.add_argument("--Subject.Board", dest="board", required=True, help="the landing card's board")
-    parser.add_argument("--Subject.Card", dest="card", required=True, help="the landing card")
-    return parser.parse_args(argv)
-
-
-def main(
-    argv: list[str] | None = None,
-    environ: dict[str, str] | None = None,
-    jobs_at: JobsAt | None = None,
-    git: Seam = git,
-) -> int:
-    environ = dict(os.environ) if environ is None else environ
-    args = parse(sys.argv[1:] if argv is None else argv)
+def main(argv: list[str] | None = None, environ: dict[str, str] | None = None, run: Bash = bash) -> int:
+    argv = sys.argv[1:] if argv is None else argv
     try:
-        sha = landed_sha(environ)
-        if jobs_at is None:
-            jobs_at = lambda at: butler_job(args.board, args.card, at)  # noqa: E731
-        for line in deploy(sha, jobs_at, git):
-            print(line, flush=True)
+        step = STEPS.get(argv[0] if argv else "")
+        if step is None:
+            raise Refused(f"the step is one of {', '.join(STEPS)}, not {argv[0] if argv else 'nothing'!r}")
+        step(*landed(dict(os.environ) if environ is None else environ), run)
     except Refused as refusal:
-        print(f"deploy refused: {refusal}", file=sys.stderr)
+        sys.stderr.write(f"deploy refused: {refusal}\n")
         return 1
     return 0
 
