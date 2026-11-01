@@ -71,6 +71,108 @@ class Shape(unittest.TestCase):
         self.assertLess(deploy_rig.ORACLE.index("cp -a"), deploy_rig.ORACLE.index("reset -q --hard"))
         self.assertLess(deploy_rig.ORACLE.index("reset -q --hard"), deploy_rig.ORACLE.index("deps.sh"))
 
+    def test_the_recompile_runs_in_order_and_the_host_is_configured_from_its_gen_dir(self):
+        build = deploy_rig.ORACLE
+        steps = [
+            "sh hosts/n64recomp/deps.sh",  # N64Recomp at its pin, patched
+            "sh hosts/n64recomp/recompile.sh",  # N64Recomp built, decomp ELF, profile, generate, no unnamed
+            "cmake -S hosts/n64recomp",  # n64host fed from the generated dir
+            'cmake --build "$BUILD/build"',
+            'selfcheck "$BUILD/n64host"',
+        ]
+        at = [build.index(step) for step in steps]
+        self.assertEqual(at, sorted(at))
+        self.assertIn('-DN64R_GEN_DIR="$gen"', build)
+        self.assertIn(f"gen=$BUILD/recomp/{deploy_rig.VERSION}", build)
+        self.assertNotIn("rig-state/behave/gen", build)
+        self.assertIn(f'"$src" {deploy_rig.RAGEWARS} {deploy_rig.RAGEWARS_LOCAL} ', build)
+        self.assertNotIn("__", build.replace("__TOOLKIT__", ""))
+        self.assertLess(len(build.encode()), 4096)  # Job Invoke bounds one Argv item
+
+    def test_recompile_sh_runs_its_steps_in_order_and_stops_on_an_unnamed_address(self):
+        text = (ROOT / "hosts/n64recomp/recompile.sh").read_text()
+        steps = ['cmake --build "$build/deps/N64Recomp/build"', 'sh "$src/hosts/n64recomp/decomp_elf.sh"',
+                 'python3 "$src/hosts/n64recomp/recomp_profile.py"', "python3 -m cake_taste", 'test -z "$unnamed"',
+                 'echo "func_names=0"']
+        at = [text.index(step) for step in steps]
+        self.assertEqual(at, sorted(at))
+        self.assertIn('echo "$unnamed" >&2; exit 1', text)
+        self.assertIn("(func|asm|entry)_[0-9A-Fa-f]{8}", text)
+        self.assertEqual(subprocess.run(["sh", "-n", str(ROOT / "hosts/n64recomp/recompile.sh")]).returncode, 0)
+
+    def test_the_derived_profile_points_every_recomp_path_into_the_build_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            live = Path(tmp) / "live.json"
+            old = {"project_root": "/old", "runtime_root": "/old", "output_root": "/old"}
+            recomp = {"decomp_root": "/old", "gen_root": "/old/gen", "elf": "e",
+                      "symbols_file": "versions/{version}/symbol_addrs.txt",
+                      "tools": {"n64recomp": "/old/a", "rsprecomp": "/old/b"},
+                      "symbol_names": {"us-rev1": {"0x802BC3B0": "osAiSetFrequency", "0x802BEB30": "osPiRawStartDma",
+                                                   "0x802BF440": {"name": "osCreateViManager", "source": "x"}}}}
+            live.write_text(json.dumps({"name": "behave", **old, "recomp": recomp}))
+            host_names = [line.split()[0] for line in (ROOT / "hosts/n64recomp/HOST_RUNTIME").read_text().splitlines()
+                          if line.strip() and not line.startswith("#")]
+            build = Path(tmp) / "b"
+            (build / "decomp/versions/us-rev1").mkdir(parents=True)
+            (build / "decomp/versions/us-rev1/symbol_addrs.txt").write_text(
+                "osAiSetFrequency = 0x802BC3B0; // type:func\n__osPiRawStartDma = 0x802BEB30; // type:func\n"
+                "System_CreateVideoManager = 0x802BF440; // type:func\n"
+                + "".join(f"{n} = 0x{0x80300000 + 16 * i:08X}; // type:func\n" for i, n in enumerate(host_names)))
+            script = ROOT / "hosts/n64recomp/recomp_profile.py"
+            done = subprocess.run(["python3", str(script), str(live), str(build)], capture_output=True, text=True,
+                                  check=True)
+            derived = json.loads(done.stdout)
+            b = str(build)
+        self.assertEqual(derived["project_root"], b + "/decomp")
+        self.assertEqual(derived["recomp"]["decomp_root"], b + "/decomp")
+        self.assertEqual(derived["recomp"]["gen_root"], b + "/recomp")
+        self.assertEqual(derived["recomp"]["tools"], {"n64recomp": b + "/deps/N64Recomp/build/N64Recomp",
+                                                      "rsprecomp": b + "/deps/N64Recomp/build/RSPRecomp"})
+        # the host binds the decomp's names for the two dropped entries, and the patch keeps libultra originals as _kept
+        link = (ROOT / "hosts/n64recomp/CMakeLists.txt").read_text()
+        for bound in ("--wrap=__osPiRawStartDma_kept\n", "--wrap=System_CreateVideoManager\n"):
+            self.assertIn(bound, link)
+        for old in ("osPiRawStartDma_recomp", "osCreateViManager_recomp"):
+            self.assertNotIn(old, link)
+        diff = ROOT / "hosts/n64recomp/patches/n64recomp-runtime-funcs.diff"
+        self.assertIn('func.name + "_kept"', diff.read_text())
+        # an entry the decomp names differently is dropped and listed: that function stays recompiled as named
+        names = derived["recomp"]["symbol_names"]["us-rev1"]
+        self.assertEqual(names["0x802BC3B0"], "osAiSetFrequency")
+        self.assertNotIn("0x802BEB30", names)
+        # the functions the host's VI and SP model owns run the runtime's version, at the decomp's address for each
+        self.assertEqual(sorted(e["name"] for a, e in names.items() if a != "0x802BC3B0"), sorted(host_names))
+        self.assertIn("osViGetCurrentFramebuffer", host_names)
+        self.assertIn("osSpTaskStartGo", host_names)
+        self.assertEqual(names["0x80300000"]["name"], host_names[0])
+        self.assertIn("HOST_RUNTIME", names["0x80300000"]["source"])
+        self.assertIn("0x802BEB30 osPiRawStartDma (the decomp names it __osPiRawStartDma)", done.stderr)
+        self.assertIn("0x802BF440", done.stderr)
+
+    def test_a_host_runtime_name_the_decomp_lacks_stops_the_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            live = Path(tmp) / "live.json"
+            recomp = {"symbols_file": "versions/{version}/symbol_addrs.txt", "tools": {},
+                      "symbol_names": {"us-rev1": {}}}
+            live.write_text(json.dumps({"name": "behave", "recomp": recomp}))
+            build = Path(tmp) / "b"
+            (build / "decomp/versions/us-rev1").mkdir(parents=True)
+            (build / "decomp/versions/us-rev1/symbol_addrs.txt").write_text("osViBlack = 0x80300000; // type:func\n")
+            done = subprocess.run(["python3", str(ROOT / "hosts/n64recomp/recomp_profile.py"), str(live), str(build)],
+                                  capture_output=True, text=True)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("osViGetCurrentFramebuffer", done.stderr)
+
+    def test_deps_sh_prepares_n64recomp_with_its_patches_before_the_runtime(self):
+        text = (ROOT / "hosts/n64recomp/deps.sh").read_text()
+        recomp = text.index("prepare N64Recomp https://github.com/N64Recomp/N64Recomp")
+        self.assertLess(recomp, text.index("prepare N64ModernRuntime"))
+        patches = text[recomp:text.index("prepare N64ModernRuntime")]
+        jtbl, funcs = "n64recomp-jtbl-kuseg-alias-and-bounds.diff", "n64recomp-runtime-funcs.diff"
+        self.assertLess(patches.index(jtbl), patches.index(funcs))
+        for name in (jtbl, funcs):
+            self.assertTrue((ROOT / "hosts/n64recomp/patches" / name).is_file())
+
     def test_the_build_uses_the_job_width_and_the_activation_folder(self):
         self.assertIn('cmake --build "$BUILD/build" -j"$JOBS"', deploy_rig.ORACLE)
         self.assertIn('mkdir "$BUILD"', deploy_rig.ORACLE)
@@ -79,7 +181,10 @@ class Shape(unittest.TestCase):
 
     def test_the_charge_headers_ship_in_the_snapshot_and_are_hashed_in_its_pins(self):
         build = deploy_rig.ORACLE
-        copy = 'install -m 644 "$BUILD/build/gen/cpu_profile.h" "$BUILD/build/gen/cpu_native.h" "$BUILD/gen/"'
+        copy = (
+            'install -m 644 "$BUILD/build/gen/cpu_profile.h" "$BUILD/build/gen/cpu_native.h" '
+            '"$gen/symbols.toml" "$BUILD/gen/"'
+        )
         self.assertIn(copy, build)
         self.assertLess(build.index(copy), build.index('rm -rf "$BUILD/deps" "$BUILD/build"'))
         self.assertLess(build.index(copy), build.index("oracle-pins.json"))

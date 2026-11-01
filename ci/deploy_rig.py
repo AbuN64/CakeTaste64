@@ -19,9 +19,13 @@ over as it is.
   installed  the toolkit link resolves to BUILD and the installed commit of cake-taste-64 equals the landed SHA. A
              mismatch refuses (fix forward, no rollback);
   oracle     the oracle activation (BUILD is <oracle>.<SHA>): builds n64host into BUILD (pinned deps copied from
-             ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with the build tool at -j"$JOBS" and runs the
-             oracle self-check on that build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does
-             the close flip the oracle link; a build that is the live target already is a no-op;
+             ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with the build tool at -j"$JOBS". The recompile
+             runs first and the decomp names every function: N64Recomp built at its pin with the host's patches, the
+             decomp ELF of the PINS RageWars commit (decomp_elf.sh), a taste profile derived for BUILD, `taste recomp
+             generate` into BUILD/recomp; an address the decomp does not name stops it, listed, never a func_
+             fallback. n64host is configured from that gen dir. Then the oracle self-check runs on that build:
+             boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the oracle link; a
+             build that is the live target already is a no-op;
   readback   the self-check again through the live oracle link, which must read <oracle>.<SHA>.
 
   deploy-env TOOLKIT=/home/abu/venv-decomp
@@ -41,6 +45,10 @@ from collections.abc import Callable
 from pathlib import PurePosixPath
 
 ENV = "LANDED_Projects_AbuN64_CakeTaste64"
+RAGEWARS = "http://10.10.10.130:18556/Projects/RageWars.git"
+RAGEWARS_LOCAL = "/home/abu/code/ragewars-decomp"
+RECOMP_PROFILE = "/home/abu/rig-state/behave/taste-profile.json"
+VERSION = "us-rev1"
 PACKAGE = "cake_taste"
 PYTHON = "/usr/bin/python3"
 TOOLKIT = "/home/abu/rig-state/tas/live/oracle"
@@ -101,21 +109,25 @@ src=$PWD
 mkdir "$BUILD"
 trap 'rc=$?; test "$rc" = 0 || rm -rf "$BUILD"' EXIT
 mkdir "$BUILD/deps"
-cp -a "$HOME/src/oracle-deps/N64ModernRuntime" "$HOME/src/oracle-deps/rt64" "$BUILD/deps/"
+cp -a "$HOME/src/oracle-deps/N64ModernRuntime" "$HOME/src/oracle-deps/rt64" "$HOME/src/N64Recomp" "$BUILD/deps/"
+rm -rf "$BUILD/deps/N64Recomp/build"
+git -C "$BUILD/deps/N64Recomp" reset -q --hard
 git -C "$BUILD/deps/N64ModernRuntime" reset -q --hard
 git -C "$BUILD/deps/rt64" reset -q --hard
 sh hosts/n64recomp/deps.sh "$BUILD/deps"
+sh hosts/n64recomp/recompile.sh "$BUILD" "$src" __RAGEWARS__ __RAGEWARS_LOCAL__ __RECOMP_PROFILE__ __VERSION__
+gen=$BUILD/recomp/__VERSION__
 cmake -S hosts/n64recomp -B "$BUILD/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_COMPILER=/usr/bin/gcc-14 -DCMAKE_CXX_COMPILER=/usr/bin/g++-14 \
-  -DN64R_GEN_DIR="$HOME/rig-state/behave/gen/us-rev1" -DN64R_PINS="$src/hosts/n64recomp/PINS" \
+  -DN64R_GEN_DIR="$gen" -DN64R_PINS="$src/hosts/n64recomp/PINS" \
   -DN64R_PROFILE="$HOME/rig-state/behave/oracle-facts.json" \
-  -DN64R_REFUSED="$HOME/rig-state/behave/gen/us-rev1/refused.tsv" \
+  -DN64R_REFUSED="$gen/refused.tsv" \
   -DN64R_RT64_SRC="$BUILD/deps/rt64" -DN64R_RUNTIME_SRC="$BUILD/deps/N64ModernRuntime" \
   -DFETCHCONTENT_FULLY_DISCONNECTED=ON
 cmake --build "$BUILD/build" -j"$JOBS"
 install -m 755 "$BUILD/build/n64host" "$BUILD/n64host"
 mkdir "$BUILD/gen"
-install -m 644 "$BUILD/build/gen/cpu_profile.h" "$BUILD/build/gen/cpu_native.h" "$BUILD/gen/"
+install -m 644 "$BUILD/build/gen/cpu_profile.h" "$BUILD/build/gen/cpu_native.h" "$gen/symbols.toml" "$BUILD/gen/"
 python3 - "$sha" "__TOOLKIT__/oracle-pins.json" "$BUILD/gen" \
   "$HOME/rig-state/behave/oracle-facts.json" > "$BUILD/oracle-pins.json" <<'PY'
 import hashlib, json, pathlib, sys, time
@@ -126,10 +138,17 @@ print(json.dumps({"cake_taste": sys.argv[1], "built_at": time.strftime("%Y-%m-%d
                   "wall": old["wall"], "cpu": old["cpu"], "gen": gen,
                   "facts": hashlib.sha256(pathlib.Path(sys.argv[4]).read_bytes()).hexdigest()}, indent=1))
 PY
-rm -rf "$BUILD/deps" "$BUILD/build"
+rm -rf "$BUILD/deps" "$BUILD/build" "$BUILD/decomp" "$BUILD/recomp" "$BUILD/taste-run"
 selfcheck "$BUILD/n64host"
 """
 ).replace("__TOOLKIT__", TOOLKIT)
+for token, value in (
+    ("__RAGEWARS_LOCAL__", RAGEWARS_LOCAL),
+    ("__RAGEWARS__", RAGEWARS),
+    ("__RECOMP_PROFILE__", RECOMP_PROFILE),
+    ("__VERSION__", VERSION),
+):
+    ORACLE = ORACLE.replace(token, value)
 
 
 # NAME runs in the tree before the activation and answers the toolkit build's name: the engine's JSON envelope on

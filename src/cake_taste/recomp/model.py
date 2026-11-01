@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,10 @@ from cake_taste import TasteError
 from .asmfuncs import Function, read_elf_functions, read_function_addresses, read_symbol_names
 from .entries import code_pointers
 from .splat import Layout, Segment
+
+# A name that still carries only the address: the decomp has not named the function (func_), or the generator fell
+# back to the address for a boundary the symbol list does not name (asm_, entry_).
+UNNAMED = re.compile(r"(?:func|asm|entry)_[0-9A-Fa-f]{8}")
 
 
 @dataclass(frozen=True)
@@ -28,12 +33,12 @@ def build_sections(
     elf: Path,
     symbols_file: Path,
     rom_size: int | None = None,
-    overrides: dict[int, str] | None = None,
+    runtime: dict[int, str] | None = None,
     sizes: dict[int, int] | None = None,
     statics: dict[int, str] | None = None,
     rom: bytes | None = None,
 ) -> tuple[list[Section], dict[str, int]]:
-    names = {**read_symbol_names(symbols_file), **(overrides or {})}
+    names = read_symbol_names(symbols_file)
     ordered = sorted(layout.segments, key=lambda s: s.start)
     spans = [(s, layout.extent(s, rom_size)) for s in ordered if s.vram is not None]
     grouped: dict[str, list[Function]] = {s.name: [] for s, _ in spans}
@@ -67,18 +72,18 @@ def build_sections(
         grouped[owner.name].append(Function(name, function.rom, function.vram, extent))
     # Functions the symbol list types but the ELF has no sized symbol for (asm kept outside a compiled object, such
     # as a decompressor) are boundaries too; left to N64Recomp they run on into their neighbours. Only the profile
-    # names a static: the decomp's libultra names would make N64Recomp swap in the runtime's version.
+    # names a static: the decomp's own name for it, else the address.
     for vram in read_function_addresses(symbols_file):
         if vram not in (statics or {}) and _declarable(spans, grouped, vram):
-            _add_static(layout, spans, grouped, symbols_file, vram, (overrides or {}).get(vram, f"asm_{vram:08X}"))
+            _add_static(layout, spans, grouped, symbols_file, vram, names.get(vram, f"asm_{vram:08X}"))
     for vram, name in sorted((statics or {}).items()):
-        _add_static(layout, spans, grouped, symbols_file, vram, (overrides or {}).get(vram, name))
+        _add_static(layout, spans, grouped, symbols_file, vram, names.get(vram, name))
     if rom is not None:
         # Entries the game reaches through stored pointers but no `jal` names: see entries.py.
         for vram, (at, inside, end) in sorted(code_pointers(layout, spans, grouped, rom).items()):
             owner = next(s for s, size in spans
                          if s.vram is not None and s.vram <= vram < s.vram + size and grouped[s.name])
-            grouped[owner.name].append(Function((overrides or {}).get(vram, f"entry_{vram:08X}"),
+            grouped[owner.name].append(Function(names.get(vram, f"entry_{vram:08X}"),
                                                 owner.start + vram - owner.vram, vram, end - vram,
                                                 f"code pointer at rom 0x{at:X}, inside {inside}"))
     if unused_sizes:
@@ -88,6 +93,15 @@ def build_sections(
         for s, size in spans
         if grouped[s.name]
     ]
+    placed = {f.vram: f.name for s in sections for f in s.functions}
+    wrong = {v: placed.get(v) for v, n in (runtime or {}).items() if placed.get(v) != n}
+    if wrong:
+        raise TasteError("recomp.runtime", "runtime functions the decomp does not name so: "
+                         + ", ".join(f"0x{v:08X} is {placed.get(v)} not {runtime[v]}" for v in sorted(wrong)))
+    unnamed = sorted((v, n) for v, n in placed.items() if UNNAMED.search(n))
+    if unnamed:
+        raise TasteError("recomp.names", f"the decomp names {len(unnamed)} functions only func_<address>: "
+                         + ", ".join(f"0x{v:08X} ({n})" for v, n in unnamed))
     return sections, {
         "functions": sum(len(s.functions) for s in sections),
         "renamed_from_symbols": renamed,

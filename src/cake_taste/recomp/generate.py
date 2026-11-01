@@ -14,6 +14,7 @@ from typing import Any
 from cake_taste import TasteError
 from cake_taste.files import atomic_bytes, atomic_json, sha256_file
 
+from .asmfuncs import read_symbol_names
 from .fallthrough import link_fallthroughs
 from .indirect import hooks as indirect_hooks
 from .indirect import walked as walked_tables
@@ -109,8 +110,10 @@ def config_toml(settings: Settings, version: str, entry: int | None, ignored: li
         lines.append(f"functions_per_output_file = {settings.functions_per_output_file}")
     if overlays:
         lines.append(f"relocatable_sections_path = {json.dumps(str(out / 'relocatable_sections.txt'))}")
+    # N64Recomp swaps libultra names for the runtime's version; only the profile's runtime functions are given up.
+    runtime = sorted(c_name(n) for n in settings.names_for(version).values())
     lines += ["", "[patches]", f"stubs = {_array([c_name(n) for n in settings.stubs])}",
-              f"ignored = {_array([c_name(n) for n in ignored])}", ""]
+              f"ignored = {_array([c_name(n) for n in ignored])}", f"runtime = {_array(runtime)}", ""]
     # the profile's sourced facts, then every walked jump table the detector finds that no fact names (PF5)
     _, sections, _ = build(settings, version, statics)
     rom = settings.rom(version).read_bytes()
@@ -283,7 +286,8 @@ def generate(settings: Settings, version: str, refused_copy: Path | None = None)
             # Declare it as a function (extent from the decomp's boundaries); the next pass ignores it normally.
             statics[int(static.group(1), 16)] = name
             symbols = write_symbols(settings, version, statics)
-            name = settings.names_for(version).get(int(static.group(1), 16), name)  # the profile may name a static
+            decomp_names = read_symbol_names(settings.symbols_path(version))
+            name = decomp_names.get(int(static.group(1), 16), name)  # the decomp's name
         refused.append((name, reason))
         atomic_bytes(out / "refused.tsv", ("name\treason\n" + "".join(f"{n}\t{r}\n" for n, r in refused)).encode())
     log = ""

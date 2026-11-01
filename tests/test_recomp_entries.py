@@ -5,9 +5,11 @@ from pathlib import Path
 
 from test_recomp import build
 
+from cake_taste import TasteError
 from cake_taste.recomp.generate import write_symbols
 from cake_taste.recomp.settings import load
 
+UNNAMED_ENTRY = r"names 1 functions only func_<address>: 0x80200404 \(entry_80200404\)"
 PROLOGUE = (0x27BDFFE0).to_bytes(4, "big")  # addiu $sp, $sp, -0x20
 
 
@@ -32,12 +34,14 @@ class CodePointerEntryTests(unittest.TestCase):
     def test_stored_pointer_into_a_function_prologue_becomes_an_entry(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings = patched(Path(tmp), {0x1004: 0x27BDFFE0, 0x1010: 0x80200404})
-            self.assertEqual(entries(settings), [{"name": "entry_80200404", "vram": 0x80200404, "size": 4}])
+            with self.assertRaisesRegex(TasteError, UNNAMED_ENTRY):
+                entries(settings)
 
     def test_kuseg_alias_pointer_names_the_same_entry(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings = patched(Path(tmp), {0x1004: 0x27BDFFE0, 0x1010: 0x00200404})
-            self.assertEqual([f["vram"] for f in entries(settings)], [0x80200404])
+            with self.assertRaisesRegex(TasteError, UNNAMED_ENTRY):
+                entries(settings)
 
     def test_word_that_does_not_start_a_frame_is_no_entry(self):
         with tempfile.TemporaryDirectory() as tmp:

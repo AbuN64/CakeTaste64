@@ -130,10 +130,10 @@ target_link_libraries(n64host PRIVATE librecomp ultramodern rt64 ${SDL2_LIBRARIE
 target_compile_definitions(n64host PRIVATE HLSL_CPU FFX_GCC RT64_SDL_WINDOW_VULKAN IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
 target_link_options(n64host PRIVATE -Wl,--wrap=osInitialize_recomp -Wl,--wrap=__osInitialize_common_recomp -Wl,--wrap=osGetMemSize_recomp
   -Wl,--wrap=osUnmapTLBAll_recomp -Wl,--wrap=cop0_status_write
-  -Wl,--wrap=osSetEventMesg_recomp -Wl,--wrap=osPiRawStartDma_recomp
-  -Wl,--wrap=osCreateViManager_recomp
+  -Wl,--wrap=osSetEventMesg_recomp -Wl,--wrap=__osPiRawStartDma_kept
+  -Wl,--wrap=System_CreateVideoManager
   -Wl,--wrap=osRecvMesg_recomp -Wl,--wrap=osSendMesg_recomp
-  -Wl,--wrap=osCreateMesgQueue_recomp -Wl,--wrap=osContStartQuery_recomp
-  -Wl,--wrap=osContStartReadData_recomp -Wl,--wrap=osContGetQuery_recomp
+  -Wl,--wrap=osCreateMesgQueue_recomp -Wl,--wrap=osContStartQuery_kept
+  -Wl,--wrap=osContStartReadData_kept -Wl,--wrap=osContGetQuery_kept
   -Wl,--wrap=__osDisableInt_recomp -Wl,--wrap=__osRestoreInt_recomp
   -Wl,--wrap=switch_error -Wl,--wrap=osAiGetStatus_recomp -Wl,--wrap=osAiSetNextBuffer_recomp)

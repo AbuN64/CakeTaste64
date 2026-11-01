@@ -64,3 +64,16 @@ runs out (4096 threads), stops the host.
 
 `tests/test_runtime_thread_context.py` applies this patch to the pinned `threads.cpp` slice and starts the result
 twice: the stored pointer must be the same in both processes.
+
+# N64Recomp runtime functions
+
+Pin: `ffb39cdad1da5de07eaaa48bd1db4a89a7986771`.
+Apply `n64recomp-runtime-funcs.diff` in that checkout (after `n64recomp-jtbl-kuseg-alias-and-bounds.diff`; they touch
+different files) before building N64Recomp. N64Recomp renames every function whose name is in its built-in libultra
+lists to `<name>_recomp` and leaves its body out, so the runtime's version runs instead. With the decomp's own names on
+every symbol that swapped osPiStartDma and the other original libultra code the oracle must run as recompiled. The patch
+makes the swap apply only to the names `[patches] runtime = [...]` lists (written from the profile's `symbol_names`);
+every other function on those lists stays recompiled from its original code under a third name, `<name>_kept`: its plain
+name clashes with ultra64.h / the C library and `<name>_recomp` with librecomp's own (osContStartQuery_recomp, ...).
+The host's charged-name lookup (`cpu_scheduler.cpp`) strips `_recomp` and `_kept`, and the PI and VI adapters bind the
+decomp's own names (`__osPiRawStartDma`, `System_CreateVideoManager`), not the libultra ones.

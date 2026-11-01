@@ -47,6 +47,7 @@ int main(int argc, char **argv){
  // Game code charges; the SDK and port-native code do not; a host-libc collision resolves by its stem.
  assert(n64host_charged("game")==1 && n64host_charged("gameplay")==0 && n64host_charged("osSendMesg")==0);
  assert(n64host_charged("__udivdi3_recomp")==1);
+ assert(n64host_charged("osSendMesg_kept")==0 && n64host_charged("game_kept")==1);
  uint8_t ram[8]{}; recomp_context ctx{};
  n64host_cpu_tick(1); assert(advances==0&&checks==0);
  n64host_rdram=ram; n64host_cpu_tick(1); assert(advances==0&&checks==0);

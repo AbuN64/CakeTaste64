@@ -278,6 +278,7 @@ class RecompTests(unittest.TestCase):
                 "  osStartThread_recomp(rdram, ctx);\\n;}\\n' > funcs/f.c\n")
         with tempfile.TemporaryDirectory() as t:
             profile = build(Path(t), body)
+            (Path(t) / "decomp/versions/v1/symbol_addrs.txt").write_text('osPiRawStartDma = 0x80200408; // type:func\n')
             section = profile.section
             profile.section = lambda name: {**section(name), "symbol_names": {"v1": {"0x80200408": "osPiRawStartDma"}}}
             run(profile, ("generate", "--version", "v1"))
@@ -306,6 +307,9 @@ class RecompTests(unittest.TestCase):
     def test_symbol_names_may_carry_their_source_and_must_not_be_empty(self):
         with tempfile.TemporaryDirectory() as t:
             profile = build(Path(t))
+            (Path(t) / "decomp/versions/v1/symbol_addrs.txt").write_text(
+                "osFirst = 0x80200400; // type:func\nosSecond = 0x80200408; // type:func\n"
+            )
             section = profile.section
             profile.section = lambda name: {**section(name), "symbol_names": {"v1": {
                 "0x80200400": {"name": "osFirst", "source": "same body as the donor's osFirst"},
@@ -320,12 +324,50 @@ class RecompTests(unittest.TestCase):
                 with self.assertRaises(TasteError):
                     run(profile, ("symbols", "--version", "v1"))
 
+    def test_the_decomps_names_reach_the_symbols_and_only_the_runtime_functions_are_swapped(self):
+        from cake_taste.recomp.generate import config_toml
+        with tempfile.TemporaryDirectory() as t:
+            profile = build(Path(t))
+            (Path(t) / "decomp/versions/v1/symbol_addrs.txt").write_text(
+                "osPiStartDma = 0x80200400; // type:func\nosSendMesg = 0x80200408; // type:func\n")
+            section = profile.section
+            profile.section = lambda name: {**section(name), "symbol_names": {"v1": {"0x80200408": "osSendMesg"}}}
+            run(profile, ("symbols", "--version", "v1"))
+            data = tomllib.loads((Path(t) / "gen/v1/symbols.toml").read_text())
+            names = [f["name"] for f in data["section"][0]["functions"]]
+            config = tomllib.loads(config_toml(load(profile), "v1", None, [], []))
+        self.assertEqual(names, ["osPiStartDma", "osSendMesg"])
+        self.assertEqual(config["patches"]["runtime"], ["osSendMesg"])  # osPiStartDma stays recompiled
+
+    def test_a_function_the_decomp_names_only_by_address_stops_the_generator_with_the_address(self):
+        with tempfile.TemporaryDirectory() as t:
+            profile = build(Path(t))
+            (Path(t) / "decomp/versions/v1/symbol_addrs.txt").write_text(
+                "func_80200400_de = 0x80200400; // type:func\nsecond = 0x80200408; // type:func\n")
+            with self.assertRaises(TasteError) as raised:
+                run(profile, ("symbols", "--version", "v1"))
+            self.assertFalse((Path(t) / "gen/v1/symbols.toml").exists())
+        self.assertIn("0x80200400 (func_80200400_de)", str(raised.exception))
+        self.assertNotIn("second", str(raised.exception))
+
+    def test_a_runtime_function_the_decomp_names_differently_stops_the_generator(self):
+        with tempfile.TemporaryDirectory() as t:
+            profile = build(Path(t))
+            section = profile.section
+            profile.section = lambda name: {**section(name), "symbol_names": {"v1": {"0x80200408": "osSendMesg"}}}
+            with self.assertRaises(TasteError) as raised:
+                run(profile, ("symbols", "--version", "v1"))
+        self.assertIn("0x80200408 is second not osSendMesg", str(raised.exception))
+
     def test_a_game_function_named_like_a_host_library_function_gets_another_c_name(self):
         """The host compiles the generated funcs.h beside libc and SDL headers: a game `frexp` made it fail to build."""
         from cake_taste.recomp.generate import config_toml
         from cake_taste.recomp.model import c_name
         with tempfile.TemporaryDirectory() as t:
             profile = build(Path(t))
+            (Path(t) / "decomp/versions/v1/symbol_addrs.txt").write_text(
+                "frexp = 0x80200400; // type:func\nsqrt = 0x80200408; // type:func\n"
+            )
             section = profile.section
             profile.section = lambda name: {**section(name), "symbol_names": {"v1": {
                 "0x80200400": "frexp", "0x80200408": "sqrt"}}}

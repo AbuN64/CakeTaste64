@@ -44,6 +44,7 @@ class Settings:
     rsp_function: str | None
     functions_per_output_file: int
     max_refusals: int
+    # per version, the functions the runtime provides: address to the decomp's name
     symbol_names: dict[str, dict[int, str]]
 
     function_sections: dict[str, Path] = field(default_factory=dict)

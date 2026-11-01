@@ -20,11 +20,11 @@ class ViAdapterTests(unittest.TestCase):
 static int count=0;
 void osViSetMode(uint8_t*,int32_t mode) {assert(count++==0);assert(mode==(int32_t)0x80000800u);}
 void osViBlack(uint32_t black) {assert(count++==1);assert(black==1);}
-extern "C" void __wrap_osCreateViManager_recomp(uint8_t*,recomp_context*);
+extern "C" void __wrap_System_CreateVideoManager(uint8_t*,recomp_context*);
 int main() {
  uint8_t ram[4096];recomp_context ctx;
- __wrap_osCreateViManager_recomp(ram,&ctx);
- __wrap_osCreateViManager_recomp(ram,&ctx);
+ __wrap_System_CreateVideoManager(ram,&ctx);
+ __wrap_System_CreateVideoManager(ram,&ctx);
  assert(count==2);
 }
 """)

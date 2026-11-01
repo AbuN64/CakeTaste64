@@ -29,9 +29,9 @@ class QueueTraceTests(unittest.TestCase):
 static unsigned calls;
 namespace ultramodern { int32_t this_thread() { return 0x80001000; } }
 extern "C" uint8_t *n64host_xlate_slow(uint8_t *r,uint32_t a) { return r+(a&4095); }
-#define REAL(n) extern "C" void __real_##n##_recomp(uint8_t*,recomp_context *c) {++calls;c->r2=42;}
-REAL(osRecvMesg) REAL(osSendMesg) REAL(osCreateMesgQueue)
-REAL(osContStartQuery) REAL(osContStartReadData) REAL(osContGetQuery)
+#define REAL(n, s) extern "C" void __real_##n##s(uint8_t*,recomp_context *c) {++calls;c->r2=42;}
+REAL(osRecvMesg,_recomp) REAL(osSendMesg,_recomp) REAL(osCreateMesgQueue,_recomp)
+REAL(osContStartQuery,_kept) REAL(osContStartReadData,_kept) REAL(osContGetQuery,_kept)
 extern "C" void __wrap_osRecvMesg_recomp(uint8_t*,recomp_context*);
 int main(int argc, char**) {
  uint8_t ram[4096]={};

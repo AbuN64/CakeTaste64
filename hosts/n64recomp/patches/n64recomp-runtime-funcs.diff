@@ -1,0 +1,79 @@
+diff --git a/src/config.cpp b/src/config.cpp
+index 1066aff..aca5cc4 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -127,6 +127,29 @@ std::vector<std::string> get_renamed_funcs(const toml::table* patches_data) {
+     return renamed_funcs;
+ }
+ 
++std::vector<std::string> get_runtime_funcs(const toml::table* patches_data) {
++    std::vector<std::string> runtime_funcs{};
++
++    // Check if the runtime funcs array exists.
++    const toml::node_view runtime_funcs_data = (*patches_data)["runtime"];
++
++    if (runtime_funcs_data.is_array()) {
++        const toml::array* runtime_funcs_array = runtime_funcs_data.as_array();
++
++        // Make room for all the runtime funcs in the array.
++        runtime_funcs.reserve(runtime_funcs_array->size());
++
++        // Gather the runtime and place them into the array.
++        runtime_funcs_array->for_each([&runtime_funcs](auto&& el) {
++            if constexpr (toml::is_string<decltype(el)>) {
++                runtime_funcs.push_back(*el);
++            }
++        });
++    }
++
++    return runtime_funcs;
++}
++
+ std::vector<N64Recomp::FunctionSize> get_func_sizes(const toml::array* func_sizes_array) {
+     std::vector<N64Recomp::FunctionSize> func_sizes{};
+ 
+@@ -457,6 +480,9 @@ N64Recomp::Config::Config(const char* path) {
+             // Renamed funcs array (optional)
+             renamed_funcs = get_renamed_funcs(table);
+ 
++            // Runtime funcs array: the only functions the built-in libultra lists swap for the runtime's (optional)
++            runtime_funcs = get_runtime_funcs(table);
++
+             // Single-instruction patches (optional)
+             instruction_patches = get_instruction_patches(table);
+ 
+diff --git a/src/config.h b/src/config.h
+index 7d6db23..18704bf 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -58,6 +58,7 @@ namespace N64Recomp {
+         std::vector<std::string> stubbed_funcs;
+         std::vector<std::string> ignored_funcs;
+         std::vector<std::string> renamed_funcs;
++        std::vector<std::string> runtime_funcs;
+         std::vector<InstructionPatch> instruction_patches;
+         std::vector<FunctionTextHook> function_hooks;
+         std::vector<FunctionSize> manual_func_sizes;
+diff --git a/src/main.cpp b/src/main.cpp
+index 669c4a1..9c7dc63 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -450,8 +450,18 @@ int main(int argc, char** argv) {
+             context.functions_by_name[func.name] = func_index;
+         };
+ 
++        std::unordered_set<std::string> runtime_funcs_set(config.runtime_funcs.begin(), config.runtime_funcs.end());
++
+         for (size_t func_index = 0; func_index < context.functions.size(); func_index++) {
+             N64Recomp::Function& func = context.functions[func_index];
++            // A function on a built-in list that the config does not give to the runtime stays recompiled from its own
++            // code under a third name: the plain name clashes with the host's headers and <name>_recomp with the
++            // runtime's own, so it is <name>_kept (the host's charged-name lookup strips it).
++            if (!runtime_funcs_set.contains(func.name) && (N64Recomp::reimplemented_funcs.contains(func.name) ||
++                N64Recomp::ignored_funcs.contains(func.name) || N64Recomp::renamed_funcs.contains(func.name))) {
++                rename_function(func_index, func.name + "_kept");
++                continue;
++            }
+             if (N64Recomp::reimplemented_funcs.contains(func.name)) {
+                 rename_function(func_index, func.name + "_recomp");
+                 func.reimplemented = true;

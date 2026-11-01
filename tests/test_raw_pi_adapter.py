@@ -54,7 +54,7 @@ void enqueue_external_message_src(uint32_t mq,uint32_t msg,bool jam,EventMessage
  assert(src==EventMessageSource::Pi);
 }}
 extern "C" void __wrap_osSetEventMesg_recomp(uint8_t*,recomp_context*);
-extern "C" void __wrap_osPiRawStartDma_recomp(uint8_t*,recomp_context*);
+extern "C" void __wrap___osPiRawStartDma_kept(uint8_t*,recomp_context*);
 int main(int argc,char **argv) {
  uint8_t ram[4096]={}; recomp_context ctx{};
  if (argc==1 || strcmp(argv[1],"queue")) {
@@ -66,7 +66,7 @@ int main(int argc,char **argv) {
  if (argc>1 && !strcmp(argv[1],"ram")) ctx.r6=0x80000ff8;
  if (argc>1 && !strcmp(argv[1],"align")) ctx.r6=0x80000101;
  if (argc>1 && !strcmp(argv[1],"write")) ctx.r4=1;
- __wrap_osPiRawStartDma_recomp(ram,&ctx);
+ __wrap___osPiRawStartDma_kept(ram,&ctx);
  assert(step==3 && ctx.r2==0);
 }
 """)

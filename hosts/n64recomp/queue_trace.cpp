@@ -64,11 +64,13 @@ void record(uint8_t *ram, recomp_context *ctx, const char *name, const char *pha
     std::fputs("]}\n", trace.file);
 }
 }
-#define WRAP(name, queue_arg) \
-extern "C" void __real_##name##_recomp(uint8_t*,recomp_context*); \
-extern "C" void __wrap_##name##_recomp(uint8_t *ram,recomp_context *ctx) { \
+// `suffix` is _recomp for a function the runtime swaps in and _kept for a libultra original the recompile keeps
+// (osCont*): the hook binds whichever name the guest calls.
+#define WRAP(name, suffix, queue_arg) \
+extern "C" void __real_##name##suffix(uint8_t*,recomp_context*); \
+extern "C" void __wrap_##name##suffix(uint8_t *ram,recomp_context *ctx) { \
     record(ram,ctx,#name,"enter",queue_arg); \
-    __real_##name##_recomp(ram,ctx); \
+    __real_##name##suffix(ram,ctx); \
     record(ram,ctx,#name,"return",queue_arg); \
 }
 // Hooks of the golden recorder (weak: absent in unit-test mocks). Send fires before the real call,
@@ -90,7 +92,7 @@ extern "C" void __wrap_osRecvMesg_recomp(uint8_t *ram,recomp_context *ctx) {
     record(ram,ctx,"osRecvMesg","return",true);
     if (n64host_golden_recv && out) n64host_golden_recv(ram, queue, out);
 }
-WRAP(osCreateMesgQueue,true)
-WRAP(osContStartQuery,true)
-WRAP(osContStartReadData,true)
-WRAP(osContGetQuery,false)
+WRAP(osCreateMesgQueue,_recomp,true)
+WRAP(osContStartQuery,_kept,true)
+WRAP(osContStartReadData,_kept,true)
+WRAP(osContGetQuery,_kept,false)

@@ -1,5 +1,5 @@
 #!/bin/sh
-# deps.sh DEST: N64ModernRuntime and RT64 at the PINS commits with this host's patches applied, in DEST/<name>.
+# deps.sh DEST: N64Recomp, N64ModernRuntime and RT64 at the PINS commits with this host's patches applied, in DEST/<name>.
 # Idempotent: an existing checkout is moved to its pin (refused if it carries other edits) and patched once.
 # Configure the host with -DN64R_RUNTIME_SRC=DEST/N64ModernRuntime -DN64R_RT64_SRC=DEST/rt64.
 set -eu
@@ -26,6 +26,8 @@ prepare() {  # name url patch...
   done
   echo "deps: $dir at $pin, patched: $*"
 }
+prepare N64Recomp https://github.com/N64Recomp/N64Recomp \
+  n64recomp-jtbl-kuseg-alias-and-bounds.diff n64recomp-runtime-funcs.diff
 prepare N64ModernRuntime https://github.com/N64Recomp/N64ModernRuntime \
   n64modernruntime-thread-queue-remove.diff n64modernruntime-virtual-time.diff \
   n64modernruntime-thread-context-slab.diff

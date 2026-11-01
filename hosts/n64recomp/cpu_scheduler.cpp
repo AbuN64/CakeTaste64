@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 #include "recomp.h"
 #include "ultramodern/ultramodern.hpp"
 #include "cpu_budget.h"
@@ -24,8 +25,9 @@ void service_interrupts() {
 
 // Whether an entry of the recompiled function `name` is guest work: the original game code both sides compile, never
 // the SDK range or a function the port binds to native code. N64Recomp suffixes a name that collides with the host's
-// C library with _recomp (__udivdi3_recomp); every other recompiled function is in symbols.toml, so an unknown name
-// is a broken build.
+// C library with _recomp (__udivdi3_recomp) and a kept libultra/libc original, whose plain name clashes with the
+// runtime's headers and its _recomp with the runtime's own, with _kept (osContInit_kept); every other recompiled
+// function is in symbols.toml, so an unknown name is a broken build.
 extern "C" int n64host_charged(const char *name) {
     auto find = [](const char *key, size_t n) {
         size_t lo = 0, hi = sizeof host_functions / sizeof host_functions[0];
@@ -40,7 +42,10 @@ extern "C" int n64host_charged(const char *name) {
     };
     size_t n = std::strlen(name);
     int charged = find(name, n);
-    if (charged < 0 && n > 7 && std::strcmp(name + n - 7, "_recomp") == 0) charged = find(name, n - 7);
+    for (const char *suffix : {"_recomp", "_kept"}) {
+        size_t s = std::strlen(suffix);
+        if (charged < 0 && n > s && std::strcmp(name + n - s, suffix) == 0) charged = find(name, n - s);
+    }
     if (charged >= 0) return charged;
     std::fprintf(stderr, "n64host: recompiled function %s is not in symbols.toml\n", name);
     std::_Exit(2);

@@ -1,4 +1,5 @@
-// Raw PI DMA adapter for runtimes that only implement the queued PI-manager API.
+// Raw PI DMA adapter for runtimes that only implement the queued PI-manager API. It binds the decomp's own name
+// for the function (__osPiRawStartDma_kept, the name the recompile gives the original it keeps).
 // The guest owns its worker and OS_EVENT_PI queue. Copy first, then deliver its configured message.
 #include <cstdio>
 #include <cstdlib>
@@ -30,7 +31,7 @@ extern "C" void __wrap_osSetEventMesg_recomp(uint8_t *rdram, recomp_context *ctx
     }
     __real_osSetEventMesg_recomp(rdram, ctx);
 }
-extern "C" void __wrap_osPiRawStartDma_recomp(uint8_t *rdram, recomp_context *ctx) {
+extern "C" void __wrap___osPiRawStartDma_kept(uint8_t *rdram, recomp_context *ctx) {
     const uint32_t physical = ((uint32_t)ctx->r5 | recomp::rom_base) & 0x1FFFFFFFu;
     const uint32_t length = (uint32_t)ctx->r7;
     const uintptr_t ram = (uintptr_t)n64host_xlate_slow(rdram, (uint32_t)ctx->r6) - (uintptr_t)rdram;

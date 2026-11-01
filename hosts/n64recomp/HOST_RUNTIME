@@ -1,0 +1,11 @@
+# Libultra functions the host's device model runs through the runtime's <name>_recomp: the host owns the hardware they
+# touch (the VI manager is System_CreateVideoManager's adapter, the RSP is the runtime's), so the kept original would read
+# and write guest VI/SP state nothing initialises. recomp_profile.py adds each to the profile's symbol_names at the
+# address the decomp gives the name. One per line: name, then the evidence.
+osViGetCurrentFramebuffer returned 0 in all 6 sampled calls with the original kept (job rig-20261101T131906Z), then Sched_HandleRetrace faulted at va 3
+osViSwapBuffer entered at boot by the guest (job rig-20261101T132452Z); its original writes the context __osViInit never set up
+osViBlack entered at boot by the guest (job rig-20261101T132452Z); its original writes the same VI context
+osViSetYScale writes the same VI context as osViSwapBuffer and osViBlack
+osSpTaskStartGo entered at boot by the guest (job rig-20261101T132452Z); its original starts the RSP through registers the host does not model, graphics_tasks=0
+osSpTaskYield starts the same SP path as osSpTaskStartGo
+osSpTaskYielded reads the SP state osSpTaskStartGo's runtime version keeps
