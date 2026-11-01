@@ -68,7 +68,9 @@ either side: the SDK range (libultra, libaudio, libc helpers such as `__udivdi3`
 and the game functions the port binds to native code (its binding manifest; their vrams are the other
 `cpu.native_code` ranges). Function identity is the vram, the key `symbols.toml` and the port's
 `symbol_addrs.txt` share. The oracle resolves each call site once (`n64host_charged`, table `gen/cpu_native.h`
-rendered by `cpu_profile.py` from `${N64R_GEN_DIR}/symbols.toml` and the facts); the port charges exactly the
+rendered by `cpu_profile.py` from `${N64R_GEN_DIR}/symbols.toml` and the facts; every name there is the decomp's,
+from the recompile of the decomp ELF at the pinned RageWars commit, and an address the decomp leaves unnamed stops the
+render with the address listed); the port charges exactly the
 `type:func` symbols outside those ranges (`shim/boot/trace.py`, `n64c_trace_charged`). A spin loop's 1024th
 pass and an interrupt restore are service points only: they deliver due interrupts and charge nothing.
 `HOST_GUEST_NS_PER_ENTRY` is the recorded calibration window's VI time over its entries (`cpu.calibration`).
