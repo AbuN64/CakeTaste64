@@ -26,12 +26,15 @@ def guest_ns_per_entry(cpu: dict) -> float:
 
 
 SYMBOL = re.compile(r'\{ name = "([A-Za-z_][A-Za-z0-9_]*)", vram = 0x([0-9A-Fa-f]+),')
+UNNAMED = re.compile(r"(?:func|asm|entry)_[0-9A-Fa-f]{8}")
 
 
 def render_native(facts: dict, symbols: str) -> str:
     """Which recompiled functions charge guest work under the entries clock (RUNTIME.md "Virtual guest time"):
     every function of symbols.toml whose vram lies in no cpu.native_code range [lo, hi), the code the port runs
-    natively (the SDK range and the functions it binds to native code)."""
+    natively (the SDK range and the functions it binds to native code). Every row carries the decomp's name: a
+    function the decomp leaves unnamed (func_, asm_ or entry_ plus its address) stops the render with its address
+    listed, never a row under the placeholder."""
     ranges = facts["cpu"]["native_code"]
     if not isinstance(ranges, list) or not ranges or not all(
             isinstance(r, list) and len(r) == 2 and all(type(v) is int for v in r) and r[0] < r[1] for r in ranges):
@@ -42,6 +45,10 @@ def render_native(facts: dict, symbols: str) -> str:
             raise ValueError(f"symbols.toml names {name} at two addresses")
     if not functions:
         raise ValueError("symbols.toml lists no functions")
+    unnamed = sorted({vram for name, vram in functions.items() if UNNAMED.match(name)})
+    if unnamed:
+        raise ValueError(f"the decomp names no function at {len(unnamed)} addresses: "
+                         + " ".join(f"0x{vram:08X}" for vram in unnamed))
     rows = [f'    {{"{name}", {int(not any(lo <= vram < hi for lo, hi in ranges))}}},'
             for name, vram in sorted(functions.items(), key=lambda item: item[0].encode())]
     return ("#pragma once\n// Sorted by name (strcmp); charged = an entry is guest work.\n"

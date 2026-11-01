@@ -38,7 +38,8 @@ def suite_log(sha=SHA, imported=f"{CHECKOUT}/src/cake_taste/__init__.py", failed
 
 
 def readback_log(live_sha, second=HASH):
-    return f"readback-live: {TOOLKIT}.{live_sha}\nreadback-hash: {HASH}\nreadback-hash: {second}"
+    return (f"readback-live: {TOOLKIT}.{live_sha}\nreadback-func-names: 0\nreadback-os-pi-start-dma: named\n"
+            f"readback-hash: {HASH}\nreadback-hash: {second}")
 
 
 RUNTIME_DEFINES = ("osViGetCurrentFramebuffer", "osViBlack", "osSpTaskStartGo", "osSpTaskYield", "osVirtualToPhysical",
@@ -52,6 +53,23 @@ def write_symbol_lists(build: Path) -> None:
     (build / "deps/N64Recomp/src/symbol_lists.cpp").write_text(
         f"const std::unordered_set<std::string> N64Recomp::reimplemented_funcs {{\n{names}}};\n"
         'const std::unordered_set<std::string> N64Recomp::ignored_funcs {\n    "__osViInit",\n};\n')
+
+
+PINS_SCRIPT = deploy_rig.ORACLE.split("<<'PY'\n")[1].split("\nPY\n")[0]
+PINCHECK_SCRIPT = deploy_rig.READBACK.split("<<'PY'\n")[1].split("\nPY\n")[0]
+PIN = "8afb04f62207ce6ccf5e4a7ee1464cae55099794"
+
+
+def pins_json(tmp: Path, commit: str, addrs: bytes) -> dict:
+    """The pins script run for real over a gen dir that keeps the given symbol_addrs.txt."""
+    (tmp / "gen").mkdir(exist_ok=True)
+    for name in ("cpu_profile.h", "cpu_native.h"):
+        (tmp / "gen" / name).write_bytes(name.encode())
+    (tmp / "gen/symbol_addrs.txt").write_bytes(addrs)
+    (tmp / "facts.json").write_bytes(b"facts")
+    (tmp / "old.json").write_text('{"wall": 2, "cpu": 2}')
+    argv = ["python3", "-", "sha", *(str(tmp / n) for n in ("old.json", "gen", "facts.json")), commit]
+    return json.loads(subprocess.run(argv, input=PINS_SCRIPT, capture_output=True, text=True, check=True).stdout)
 
 
 class Shape(unittest.TestCase):
@@ -211,17 +229,76 @@ class Shape(unittest.TestCase):
             (tmp / "gen").mkdir()
             (tmp / "gen/cpu_profile.h").write_bytes(b"profile")
             (tmp / "gen/cpu_native.h").write_bytes(b"native")
+            (tmp / "gen/symbol_addrs.txt").write_bytes(b"osPiStartDma = 0x802BDDC0;")
             (tmp / "facts.json").write_bytes(b"facts")
             (tmp / "old.json").write_text('{"wall": 2, "cpu": 2}')
-            script = deploy_rig.ORACLE.split("<<'PY'\n")[1].split("\nPY\n")[0]
-            argv = ["python3", "-", "sha", *(str(tmp / n) for n in ("old.json", "gen", "facts.json"))]
-            out = subprocess.run(argv, input=script, capture_output=True, text=True, check=True).stdout
+            argv = ["python3", "-", "sha", *(str(tmp / n) for n in ("old.json", "gen", "facts.json")), "d" * 40]
+            out = subprocess.run(argv, input=PINS_SCRIPT, capture_output=True, text=True, check=True).stdout
             pins = json.loads(out)
             gen = pins["gen"]
             self.assertEqual(pins["facts"], hashlib.sha256(b"facts").hexdigest())
             self.assertEqual(gen["cpu_profile.h"], hashlib.sha256(b"profile").hexdigest())
             self.assertEqual(gen["cpu_native.h"], hashlib.sha256(b"native").hexdigest())
 
+
+
+class DecompPins(unittest.TestCase):
+    def test_a_changed_pin_changes_oracle_pins_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            base = pins_json(tmp, PIN, b"osPiStartDma = 0x802BDDC0;")
+            self.assertEqual(base["decomp"], {"commit": PIN, "symbol_addrs": hashlib.sha256(
+                b"osPiStartDma = 0x802BDDC0;").hexdigest()})
+            self.assertEqual(pins_json(tmp, PIN, b"osPiStartDma = 0x802BDDC0;")["decomp"], base["decomp"])
+            self.assertNotEqual(pins_json(tmp, "e" * 40, b"osPiStartDma = 0x802BDDC0;")["decomp"], base["decomp"])
+            self.assertNotEqual(pins_json(tmp, PIN, b"osPiStartDma = 0x802BDDC4;")["decomp"], base["decomp"])
+
+    def test_the_oracle_keeps_the_pinned_symbol_addrs_beside_the_headers(self):
+        build = deploy_rig.ORACLE
+        keep = 'install -m 644 "$BUILD/decomp/versions/us-rev1/symbol_addrs.txt" "$BUILD/gen/"'
+        self.assertIn(keep, build)
+        self.assertLess(build.index(keep), build.index('rm -rf "$BUILD/deps" "$BUILD/build" "$BUILD/decomp"'))
+        self.assertIn('"$(git -C "$BUILD/decomp" rev-parse HEAD)"', build)
+
+    def readback(self, tmp: Path, native=b'{"osPiStartDma", 0},', pin=PIN, commit=PIN, addrs=b"a"):
+        pins = pins_json(tmp, commit, addrs)
+        (tmp / "gen/cpu_native.h").write_bytes(native)
+        pins["gen"]["cpu_native.h"] = hashlib.sha256(native).hexdigest()
+        (tmp / "oracle-pins.json").write_text(json.dumps(pins))
+        (tmp / "PINS").write_text(f"N64Recomp ffb\nRageWars {pin}\n")
+        argv = ["python3", "-", *(str(tmp / n) for n in ("oracle-pins.json", "PINS", "gen"))]
+        return subprocess.run(argv, input=PINCHECK_SCRIPT, capture_output=True, text=True)
+
+    def test_the_readback_checks_the_pins_and_the_deployed_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            ok = self.readback(tmp)
+            self.assertEqual(ok.returncode, 0, ok.stderr)
+            self.assertIn(f"readback-decomp: {PIN}", ok.stdout)
+            self.assertIn("readback-func-names: 0", ok.stdout)
+            self.assertIn("readback-os-pi-start-dma: named", ok.stdout)
+            for message, bad in (
+                ("recompiled from", self.readback(tmp, commit="f" * 40)),
+                ("1 unnamed functions: func_80204868_de",
+                 self.readback(tmp, native=b'{"osPiStartDma", 0},{"func_80204868_de", 1},')),
+                ("does not name osPiStartDma", self.readback(tmp, native=b'{"osSendMesg", 0},')),
+            ):
+                self.assertEqual(bad.returncode, 1, message)
+                self.assertIn(message, bad.stderr)
+            # a deployed file edited after the pins were written no longer hashes to its pin
+            argv = ["python3", "-", *(str(tmp / n) for n in ("oracle-pins.json", "PINS", "gen"))]
+            self.readback(tmp)
+            for name, content, message in (("symbol_addrs.txt", b"edited", "kept symbol_addrs.txt is not the pinned"),
+                                           ("cpu_native.h", b'"osPiStartDma" ', "cpu_native.h is not the pinned")):
+                self.readback(tmp)
+                (tmp / "gen" / name).write_bytes(content)
+                bad = subprocess.run(argv, input=PINCHECK_SCRIPT, capture_output=True, text=True)
+                self.assertEqual(bad.returncode, 1)
+                self.assertIn(message, bad.stderr)
+
+    def test_the_readback_runs_the_pins_check_before_the_self_check_in_the_tree(self):
+        self.assertIn("hosts/n64recomp/PINS", deploy_rig.READBACK)
+        self.assertLess(deploy_rig.READBACK.index("oracle-pins.json"), deploy_rig.READBACK.rindex("selfcheck "))
 
 
 class FakeRun:
@@ -300,6 +377,8 @@ class Steps(unittest.TestCase):
             (readback_log(NEWER), 0),
             (readback_log(SHA), 1),
             (f"readback-live: {TOOLKIT}.{SHA}", 0),
+            (readback_log(SHA).replace("func-names: 0", "func-names: 3"), 0),
+            (readback_log(SHA).replace("os-pi-start-dma: named\n", ""), 0),
         ):
             self.assertEqual(step(["readback"], FakeRun((code, log)))[0], 1, log)
 

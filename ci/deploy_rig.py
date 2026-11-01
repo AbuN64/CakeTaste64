@@ -22,11 +22,15 @@ over as it is.
              ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with the build tool at -j"$JOBS". The recompile
              runs first and the decomp names every function: N64Recomp built at its pin with the host's patches, the
              decomp ELF of the PINS RageWars commit (decomp_elf.sh), a taste profile derived for BUILD, `taste recomp
-             generate` into BUILD/recomp; an address the decomp does not name stops it, listed, never a func_
-             fallback. n64host is configured from that gen dir. Then the oracle self-check runs on that build:
-             boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the oracle link; a
+             generate` into BUILD/recomp; oracle-pins.json records that decomp's commit and the sha256 of its
+             symbol_addrs.txt, which is kept in BUILD/gen; an address the decomp does not name stops it, listed,
+             never a func_ fallback. n64host is configured from that gen dir. Then the oracle self-check runs on that
+             build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the oracle link; a
              build that is the live target already is a no-op;
-  readback   the self-check again through the live oracle link, which must read <oracle>.<SHA>.
+  readback   the live oracle link must read <oracle>.<SHA>; its oracle-pins.json must record the PINS RageWars commit as
+             the decomp the names came from, the symbol_addrs.txt kept beside the headers must hash to the pinned
+             sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name osPiStartDma;
+             then the self-check again through the live link.
 
   deploy-env TOOLKIT=/home/abu/venv-decomp
   rig run ci/deploy_rig.py suite
@@ -128,14 +132,18 @@ cmake --build "$BUILD/build" -j"$JOBS"
 install -m 755 "$BUILD/build/n64host" "$BUILD/n64host"
 mkdir "$BUILD/gen"
 install -m 644 "$BUILD/build/gen/cpu_profile.h" "$BUILD/build/gen/cpu_native.h" "$gen/symbols.toml" "$BUILD/gen/"
+install -m 644 "$BUILD/decomp/versions/__VERSION__/symbol_addrs.txt" "$BUILD/gen/"
 python3 - "$sha" "__TOOLKIT__/oracle-pins.json" "$BUILD/gen" \
-  "$HOME/rig-state/behave/oracle-facts.json" > "$BUILD/oracle-pins.json" <<'PY'
+  "$HOME/rig-state/behave/oracle-facts.json" "$(git -C "$BUILD/decomp" rev-parse HEAD)" \
+  > "$BUILD/oracle-pins.json" <<'PY'
 import hashlib, json, pathlib, sys, time
 old = json.load(open(sys.argv[2]))
 gen = {n: hashlib.sha256((pathlib.Path(sys.argv[3]) / n).read_bytes()).hexdigest()
        for n in ("cpu_profile.h", "cpu_native.h")}
+decomp = {"commit": sys.argv[5],
+          "symbol_addrs": hashlib.sha256((pathlib.Path(sys.argv[3]) / "symbol_addrs.txt").read_bytes()).hexdigest()}
 print(json.dumps({"cake_taste": sys.argv[1], "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                  "wall": old["wall"], "cpu": old["cpu"], "gen": gen,
+                  "wall": old["wall"], "cpu": old["cpu"], "gen": gen, "decomp": decomp,
                   "facts": hashlib.sha256(pathlib.Path(sys.argv[4]).read_bytes()).hexdigest()}, indent=1))
 PY
 rm -rf "$BUILD/deps" "$BUILD/build" "$BUILD/decomp" "$BUILD/recomp" "$BUILD/taste-run"
@@ -212,8 +220,38 @@ test -x "$target/n64host" || {{ echo "live oracle link $link is broken: $target 
 echo "readback-live: $target"
 """
 
-# readback: the live link's target, then the self-check through the live link.
-READBACK = SELFCHECK + f'set -eu\n{LIVE}selfcheck "{TOOLKIT}/n64host"\n'
+# PINCHECK PINS_JSON PINS GEN: the live oracle's pins against the repository's PINS and the deployed files. The decomp
+# commit oracle-pins.json records is the RageWars line of PINS; the symbol_addrs.txt kept in GEN hashes to the sha256 it
+# records; the deployed cpu_native.h is the one the pins hash, has no func_, asm_ or entry_ name and names osPiStartDma.
+PINCHECK = r"""import hashlib, json, pathlib, re, sys
+pins = json.load(open(sys.argv[1]))
+want = next(l.split()[1] for l in open(sys.argv[2]) if l.split()[:1] == ["RageWars"])
+gen = pathlib.Path(sys.argv[3])
+sha = lambda name: hashlib.sha256((gen / name).read_bytes()).hexdigest()
+native = (gen / "cpu_native.h").read_text()
+unnamed = sorted(set(re.findall(r"(?:func|asm|entry)_[0-9A-Fa-f]{8}\w*", native)))
+for ok, message in (
+    (pins["decomp"]["commit"] == want, f"the oracle was recompiled from {pins['decomp']['commit']}, PINS has {want}"),
+    (sha("symbol_addrs.txt") == pins["decomp"]["symbol_addrs"], "the kept symbol_addrs.txt is not the pinned one"),
+    (sha("cpu_native.h") == pins["gen"]["cpu_native.h"], "the deployed cpu_native.h is not the pinned one"),
+    (not unnamed, f"cpu_native.h holds {len(unnamed)} unnamed functions: {' '.join(unnamed[:20])}"),
+    ('"osPiStartDma"' in native, "cpu_native.h does not name osPiStartDma"),
+):
+    if not ok:
+        sys.exit(f"readback: {message}")
+print(f"readback-decomp: {want}")
+print(f"readback-symbol-addrs: {pins['decomp']['symbol_addrs']}")
+print(f"readback-func-names: {len(unnamed)}")
+print("readback-os-pi-start-dma: named")
+"""
+
+# readback: the live link's target, the pins check, then the self-check through the live link. Run from the tree root.
+READBACK = (
+    SELFCHECK
+    + f'set -eu\n{LIVE}python3 - "{TOOLKIT}/oracle-pins.json" hosts/n64recomp/PINS "{TOOLKIT}/gen" <<\'PY\'\n'
+    + PINCHECK
+    + f'PY\nselfcheck "{TOOLKIT}/n64host"\n'
+)
 
 # suite PYTHON: the suite run in the Worktree (a clean tree of exactly the SHA), one `suite-KEY: value` line per fact.
 SUITE = r"""set -u
@@ -400,7 +438,10 @@ def step_readback(sha: str, toolkit: str, run: Bash) -> None:
     hashes = HASH.findall(out)
     if code or len(hashes) != 2 or hashes[0] != hashes[1]:
         raise Refused(f"readback exit {code}: {last_line(out, 'no output')}")
-    live = facts(out, "readback-").get("readback-live", "")
+    found = facts(out, "readback-")
+    if found.get("readback-func-names") != "0" or found.get("readback-os-pi-start-dma") != "named":
+        raise Refused(f"readback did not check the deployed names: {last_line(out, 'no output')}")
+    live = found.get("readback-live", "")
     if live != f"{TOOLKIT}.{sha}":
         raise Refused(f"the live oracle reads {live}, not {TOOLKIT}.{sha}")
 

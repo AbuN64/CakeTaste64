@@ -116,3 +116,22 @@ int main(int argc, char **argv){
             module.render_native(facts, symbols + '{ name = "bound", vram = 0x80300030, size = 0x10 },\n')
         with self.assertRaisesRegex(ValueError, "no functions"):
             module.render_native(facts, "")
+
+    def test_a_named_symbol_reaches_cpu_native_h_by_the_decomp_name_and_an_unnamed_address_stops(self):
+        spec = importlib.util.spec_from_file_location("cpu_profile", HOST / "cpu_profile.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        facts = {"cpu": {"native_code": [[0x802AE000, 0x802C8000]]}}
+        named = ('{ name = "osPiStartDma", vram = 0x802BDDC0, size = 0x10 },\n'
+                 '{ name = "Snapshot_RestoreSaveBlock", vram = 0x80408870, size = 0x10 },\n')
+        native = module.render_native(facts, named)
+        self.assertIn('{"osPiStartDma", 0},', native)
+        self.assertIn('{"Snapshot_RestoreSaveBlock", 1},', native)
+        self.assertNotIn("func_", native)
+        unnamed = named + ('{ name = "func_80204868_de", vram = 0x8020486C, size = 0x10 },\n'
+                           '{ name = "asm_80439F0C", vram = 0x80439F0C, size = 0x10 },\n'
+                           '{ name = "func_8042F12C_us_rev1", vram = 0x8042F12C, size = 0x10 },\n')
+        with self.assertRaises(ValueError) as raised:
+            module.render_native(facts, unnamed)
+        self.assertEqual(str(raised.exception),
+                         "the decomp names no function at 3 addresses: 0x8020486C 0x8042F12C 0x80439F0C")
