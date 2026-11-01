@@ -1,7 +1,3 @@
-deploy-env TOOLKIT=/home/abu/venv-decomp
 rig run ci/deploy_rig.py suite
-rig run ci/deploy_rig.py name
-rig activate ci/deploy_rig.py /home/abu/venv-decomp install
-rig run ci/deploy_rig.py installed
 rig activate ci/deploy_rig.py /home/abu/rig-state/tas/live/oracle oracle
 rig run ci/deploy_rig.py readback
