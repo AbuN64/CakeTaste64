@@ -141,16 +141,15 @@ class Shape(unittest.TestCase):
         self.assertIn('-DN64R_GEN_DIR="$gen"', build)
         self.assertIn(f"gen=$BUILD/recomp/{deploy_rig.VERSION}", build)
         self.assertNotIn("rig-state/behave/gen", build)
-        self.assertIn(f'"$src" {deploy_rig.RAGEWARS} {deploy_rig.RAGEWARS_LOCAL} "$unbake" ', build)
-        self.assertIn("unbake=${2:?", build)
+        self.assertIn(f'"$src" {deploy_rig.RAGEWARS} {deploy_rig.RAGEWARS_LOCAL} ', build)
         self.assertNotIn("__", build.replace("__ORACLE_LINK__", ""))
         self.assertLess(len(build.encode()), 4096)  # Job Invoke bounds one Argv item
 
     def test_the_oracle_calls_recompile_sh_with_one_command_of_exactly_its_seven_arguments(self):
         build = deploy_rig.ORACLE.replace("\\\n", " ")
         line = next(ln for ln in build.splitlines() if ln.startswith("sh hosts/n64recomp/recompile.sh"))
-        self.assertEqual(len(shlex.split(line)), 1 + 1 + 7, line)
-        self.assertEqual(shlex.split(line)[-4:], [deploy_rig.RAGEWARS_LOCAL, "$unbake",
+        self.assertEqual(len(shlex.split(line)), 1 + 1 + 6, line)
+        self.assertEqual(shlex.split(line)[-3:], [deploy_rig.RAGEWARS_LOCAL,
                                                   deploy_rig.RECOMP_PROFILE, deploy_rig.VERSION])
 
     def test_recompile_sh_runs_its_steps_in_order_and_stops_on_an_unnamed_address(self):
@@ -372,9 +371,10 @@ class DecompElfScript(unittest.TestCase):
         bin_make = tmp / "bin"
         bin_make.mkdir()
         (bin_dir / "make").rename(bin_make / "make")
+        (bin_dir / "unbake").rename(bin_make / "unbake")
         env |= {"PATH": f"{bin_make}:{os.environ['PATH']}", "RAGEWARS_LOCAL": str(local), "JOBS": "3",
                 "CALLS": str(log)}
-        argv = ["sh", str(script), str(src), str(tmp / "dest"), "v1", str(tmp / "toolkit")]
+        argv = ["sh", str(script), str(src), str(tmp / "dest"), "v1"]
         done = subprocess.run(argv, env=env, capture_output=True, text=True)
         return done, tmp / "dest", log, pin
 
@@ -389,6 +389,13 @@ class DecompElfScript(unittest.TestCase):
             self.assertTrue(calls[1].startswith("make -C "), calls[1])
             self.assertIn("-j3 build/v1/RageWars.elf local.mk=OBJSTORE := current-toolkit", calls[1])
             self.assertIn(f"decomp_elf: {pin} v1", done.stdout)
+
+    def test_the_toolkit_scripts_call_unbake_by_name_and_track_no_home_path_or_venv(self):
+        for name in ("hosts/n64recomp/decomp_elf.sh", "hosts/n64recomp/recompile.sh", "ci/deploy_rig.py"):
+            text = (ROOT / name).read_text()
+            for site_fact in ("venv-unbake", "venv-decomp", "UNBAKE", "unbake/bin"):
+                self.assertNotIn(site_fact, text, f"{name}: {site_fact}")
+        self.assertNotIn("/home", deploy_rig.RAGEWARS_LOCAL)
 
     def test_a_failed_setup_stops_before_make(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -473,10 +480,7 @@ def step(argv, run, environ=ENVIRON):
 
 
 class Host:
-    """A throwaway rig home: the toolkit link, the command directory beside it and CakeUnbake64's published unbake."""
-
-    def __init__(self, unbake=True):
-        self.published = unbake
+    """A throwaway rig home: the toolkit link, the command directory beside it."""
 
     def __enter__(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -484,11 +488,6 @@ class Host:
         self.toolkit = str(home / "venv-taste")
         self.commands = home / "commands"
         self.commands.mkdir()
-        self.unbake = home / "venv-unbake.abc"
-        (self.unbake / "bin").mkdir(parents=True)
-        (self.unbake / "bin/unbake").write_text("#!/bin/sh\n")
-        if self.published:
-            (self.commands / "unbake").symlink_to(home / "venv-unbake.abc/bin/unbake")
         live = home / f"venv-taste.{SHA}"
         (live / "bin").mkdir(parents=True)
         (live / "bin/ruff").write_text("#!/bin/sh\n")
@@ -517,20 +516,12 @@ class Steps(unittest.TestCase):
             self.assertEqual((code, err.startswith("deploy refused: ")), (1, True))
         self.assertEqual(run.calls, [])
 
-    def test_oracle_builds_at_the_sha_with_the_unbake_toolkit_found_by_command_and_a_failed_build_refuses(self):
-        with Host() as host:
-            run = FakeRun((0, ""))
-            self.assertEqual(step(["oracle"], run, host.environ)[0], 0)
-            self.assertEqual(run.calls[0][:2], (deploy_rig.ORACLE, (SHA, str(host.unbake.resolve()))))
-            code, _, err = step(["oracle"], FakeRun((1, "")), host.environ)
-            self.assertEqual((code, "oracle build exit 1, links unchanged" in err), (1, True))
-
-    def test_oracle_refuses_before_any_script_when_unbake_is_not_published(self):
-        with Host(unbake=False) as host:
-            run = FakeRun()
-            code, _, err = step(["oracle"], run, host.environ)
-            self.assertEqual((code, "is not published" in err), (1, True))
-            self.assertEqual(run.calls, [])
+    def test_oracle_builds_at_the_sha_alone_and_a_failed_build_refuses(self):
+        run = FakeRun((0, ""))
+        self.assertEqual(step(["oracle"], run)[0], 0)
+        self.assertEqual(run.calls[0][:2], (deploy_rig.ORACLE, (SHA,)))
+        code, _, err = step(["oracle"], FakeRun((1, "")))
+        self.assertEqual((code, "oracle build exit 1, links unchanged" in err), (1, True))
 
     def test_toolkit_installs_the_pinned_dev_extra_of_the_tree_and_a_failed_build_refuses(self):
         run = FakeRun((0, ""))

@@ -6,10 +6,11 @@ landing arguments, which no step reads. A step prints its facts and exits 0, or 
 it calls no other tool of the close. CakeTaste64 activates two links, both its own: the live oracle and its dev
 toolkit (the live link `deploy-env TOOLKIT=` names, which no other repository names). The toolkit holds the pinned
 `[dev]` extra of pyproject.toml and its one command, `ruff`, is published by name into the one command directory
-`commands` beside the toolkit link (the directory the rig job PATH holds); the gate does not call it, it builds its own venv from `[dev]`. Exactly one
-toolkit publishes a given name: AbuDecomp64 publishes `decomp` and CakeUnbake64 `unbake` and `unbake-run`, never `ruff`. The
-decomp toolkit link is AbuDecomp64's and the unbake toolkit CakeUnbake64's: this deploy never activates them, and
-the oracle recompile imports cake_taste from the tree, never from a toolkit.
+`commands` beside the toolkit link (the directory the rig job PATH holds); the gate does not call it, it builds its
+own venv from `[dev]`. Exactly one toolkit publishes a given name: AbuDecomp64 publishes `decomp` and CakeUnbake64
+`unbake` and `unbake-run`, never `ruff`. The decomp toolkit link is AbuDecomp64's and the unbake toolkit
+CakeUnbake64's: this deploy never activates them, and the oracle recompile imports cake_taste from the tree, never
+from a toolkit.
 
   suite      the full test suite (unittest discover over tests/) runs in the tree with its src first on the import path.
              The imported cake_taste path is printed and must lie inside the tree. Any failure refuses (one line naming
@@ -21,8 +22,8 @@ the oracle recompile imports cake_taste from the tree, never from a toolkit.
   oracle     the oracle activation (BUILD is <oracle>.<SHA>): builds n64host into BUILD (pinned deps copied from
              ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with the build tool at -j"$JOBS". The recompile
              runs first and the decomp names every function: N64Recomp built at its pin with the host's patches, the
-             decomp ELF of the PINS RageWars commit (decomp_elf.sh, whose local.mk the unbake toolkit behind the
-             command `unbake` writes: CakeUnbake64's own, found through the command directory), a taste profile derived
+             decomp ELF of the PINS RageWars commit (decomp_elf.sh, whose local.mk the command `unbake`
+             writes, called by name: CakeUnbake64's own, found on the job PATH), a taste profile derived
              for BUILD, `taste recomp generate` into BUILD/recomp; oracle-pins.json records that decomp's commit and the
              sha256 of its symbol_addrs.txt, which is kept in BUILD/gen; an address the decomp does not name stops it,
              listed, never a func_ fallback. n64host is configured from that gen dir. Then the oracle self-check runs on
@@ -54,7 +55,7 @@ from pathlib import Path, PurePosixPath
 
 ENV = "LANDED_Projects_AbuN64_CakeTaste64"
 RAGEWARS = "http://10.10.10.130:18556/Projects/RageWars.git"
-RAGEWARS_LOCAL = "/home/abu/code/ragewars-decomp"
+RAGEWARS_LOCAL = "$HOME/code/ragewars-decomp"
 COMMANDS = "commands"  # the command directory beside the toolkit link
 PUBLISHED = ("ruff",)  # this repository's toolkit command; decomp, unbake and unbake-run are other repositories'
 PIN = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;,<>=!~]+)")
@@ -110,7 +111,6 @@ SELFCHECK = r"""selfcheck() {
 ORACLE = (
     SELFCHECK
     + r"""set -eu
-unbake=${2:?the unbake toolkit}
 sha=$(git rev-parse HEAD)
 if [ -x "$BUILD/n64host" ] && [ "$(readlink -f "__ORACLE_LINK__")" = "$(readlink -f "$BUILD")" ]; then
   echo "oracle: $BUILD is live already, build skipped"
@@ -126,7 +126,7 @@ git -C "$BUILD/deps/N64Recomp" reset -q --hard
 git -C "$BUILD/deps/N64ModernRuntime" reset -q --hard
 git -C "$BUILD/deps/rt64" reset -q --hard
 sh hosts/n64recomp/deps.sh "$BUILD/deps"
-sh hosts/n64recomp/recompile.sh "$BUILD" "$src" __RAGEWARS__ __RAGEWARS_LOCAL__ __UNBAKE__ \
+sh hosts/n64recomp/recompile.sh "$BUILD" "$src" __RAGEWARS__ __RAGEWARS_LOCAL__ \
   __RECOMP_PROFILE__ __VERSION__
 gen=$BUILD/recomp/__VERSION__
 cmake -S hosts/n64recomp -B "$BUILD/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -160,7 +160,6 @@ selfcheck "$BUILD/n64host"
 ).replace("__ORACLE_LINK__", ORACLE_LINK)
 for token, value in (
     ("__RAGEWARS_LOCAL__", RAGEWARS_LOCAL),
-    ("__UNBAKE__", '"$unbake"'),
     ("__RAGEWARS__", RAGEWARS),
     ("__RECOMP_PROFILE__", RECOMP_PROFILE),
     ("__VERSION__", VERSION),
@@ -386,15 +385,6 @@ def commands(toolkit: str) -> str:
     return os.path.join(os.path.dirname(toolkit), COMMANDS)
 
 
-def unbake_toolkit(toolkit: str) -> str:
-    """The unbake toolkit (CakeUnbake64's own), found through its published command `unbake`."""
-    command = os.path.join(commands(toolkit), "unbake")
-    real = os.path.realpath(command)
-    if not os.path.isfile(real):
-        raise Refused(f"{command} is not published: CakeUnbake64's deploy publishes unbake, and this one needs it")
-    return os.path.dirname(os.path.dirname(real))
-
-
 def dev_requirements(root: Path) -> list[str]:
     """The `[dev]` extra of the tree's pyproject.toml: the one list the toolkit installs, every entry an exact pin."""
     with open(root / "pyproject.toml", "rb") as handle:
@@ -446,7 +436,7 @@ def step_toolkit(sha: str, toolkit: str, run: Bash) -> None:
 
 
 def step_oracle(sha: str, toolkit: str, run: Bash) -> None:
-    code, _ = run(ORACLE, sha, unbake_toolkit(toolkit))
+    code, _ = run(ORACLE, sha)
     if code:
         raise Refused(f"oracle build exit {code}, links unchanged")
 
