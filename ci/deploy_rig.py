@@ -29,7 +29,8 @@ over as it is.
              oracle link; a build that is the live target already is a no-op;
   readback   the live oracle link must read <oracle>.<SHA>; its oracle-pins.json must record the PINS RageWars
              commit as the decomp the names came from, the symbol_addrs.txt kept beside the headers must hash to
-             the pinned sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name osPiStartDma;
+             the pinned sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name
+             osPiStartDma;
              then the self-check again through the live link.
 
   deploy-env TOOLKIT=/home/abu/venv-decomp
