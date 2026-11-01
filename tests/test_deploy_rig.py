@@ -41,6 +41,19 @@ def readback_log(live_sha, second=HASH):
     return f"readback-live: {TOOLKIT}.{live_sha}\nreadback-hash: {HASH}\nreadback-hash: {second}"
 
 
+RUNTIME_DEFINES = ("osViGetCurrentFramebuffer", "osViBlack", "osSpTaskStartGo", "osSpTaskYield", "osVirtualToPhysical",
+                   "osDpSetNextBuffer", "osPiStartDma")
+
+
+def write_symbol_lists(build: Path) -> None:
+    """N64Recomp's symbol_lists.cpp as deps.sh leaves it: the reimplemented block, then the ignored one."""
+    (build / "deps/N64Recomp/src").mkdir(parents=True)
+    names = "".join(f'    "{n}",\n' for n in RUNTIME_DEFINES)
+    (build / "deps/N64Recomp/src/symbol_lists.cpp").write_text(
+        f"const std::unordered_set<std::string> N64Recomp::reimplemented_funcs {{\n{names}}};\n"
+        'const std::unordered_set<std::string> N64Recomp::ignored_funcs {\n    "__osViInit",\n};\n')
+
+
 class Shape(unittest.TestCase):
     def test_deploy_file_is_one_step_grammar_line_per_step_and_the_script_is_executable(self):
         lines = (ROOT / ".deploy").read_text().splitlines()
@@ -110,13 +123,15 @@ class Shape(unittest.TestCase):
                       "symbol_names": {"us-rev1": {"0x802BC3B0": "osAiSetFrequency", "0x802BEB30": "osPiRawStartDma",
                                                    "0x802BF440": {"name": "osCreateViManager", "source": "x"}}}}
             live.write_text(json.dumps({"name": "behave", **old, "recomp": recomp}))
-            host_names = [line.split()[0] for line in (ROOT / "hosts/n64recomp/HOST_RUNTIME").read_text().splitlines()
-                          if line.strip() and not line.startswith("#")]
+            host_names = ["osViGetCurrentFramebuffer", "osViBlack", "osSpTaskStartGo", "osVirtualToPhysical",
+                          "osDpSetNextBuffer"]
             build = Path(tmp) / "b"
+            write_symbol_lists(build)
             (build / "decomp/versions/us-rev1").mkdir(parents=True)
             (build / "decomp/versions/us-rev1/symbol_addrs.txt").write_text(
                 "osAiSetFrequency = 0x802BC3B0; // type:func\n__osPiRawStartDma = 0x802BEB30; // type:func\n"
                 "System_CreateVideoManager = 0x802BF440; // type:func\n"
+                "osPiStartDma = 0x80310000; // type:func\n__osViInit = 0x80311000; // type:func\n"
                 + "".join(f"{n} = 0x{0x80300000 + 16 * i:08X}; // type:func\n" for i, n in enumerate(host_names)))
             script = ROOT / "hosts/n64recomp/recomp_profile.py"
             done = subprocess.run(["python3", str(script), str(live), str(build)], capture_output=True, text=True,
@@ -140,28 +155,28 @@ class Shape(unittest.TestCase):
         names = derived["recomp"]["symbol_names"]["us-rev1"]
         self.assertEqual(names["0x802BC3B0"], "osAiSetFrequency")
         self.assertNotIn("0x802BEB30", names)
-        # the functions the host's VI and SP model owns run the runtime's version, at the decomp's address for each
+        # every reimplemented function of a HOST_RUNTIME family (VI, SP, DP, TLB) runs the runtime's version, at the
+        # decomp's address; the PI function and the ignored __osViInit stay kept
         self.assertEqual(sorted(e["name"] for a, e in names.items() if a != "0x802BC3B0"), sorted(host_names))
-        self.assertIn("osViGetCurrentFramebuffer", host_names)
-        self.assertIn("osSpTaskStartGo", host_names)
         self.assertEqual(names["0x80300000"]["name"], host_names[0])
         self.assertIn("HOST_RUNTIME", names["0x80300000"]["source"])
         self.assertIn("0x802BEB30 osPiRawStartDma (the decomp names it __osPiRawStartDma)", done.stderr)
         self.assertIn("0x802BF440", done.stderr)
 
-    def test_a_host_runtime_name_the_decomp_lacks_stops_the_profile(self):
+    def test_a_host_runtime_family_the_decomp_does_not_name_stops_the_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             live = Path(tmp) / "live.json"
             recomp = {"symbols_file": "versions/{version}/symbol_addrs.txt", "tools": {},
                       "symbol_names": {"us-rev1": {}}}
             live.write_text(json.dumps({"name": "behave", "recomp": recomp}))
             build = Path(tmp) / "b"
+            write_symbol_lists(build)
             (build / "decomp/versions/us-rev1").mkdir(parents=True)
             (build / "decomp/versions/us-rev1/symbol_addrs.txt").write_text("osViBlack = 0x80300000; // type:func\n")
             done = subprocess.run(["python3", str(ROOT / "hosts/n64recomp/recomp_profile.py"), str(live), str(build)],
                                   capture_output=True, text=True)
         self.assertNotEqual(done.returncode, 0)
-        self.assertIn("osViGetCurrentFramebuffer", done.stderr)
+        self.assertIn("HOST_RUNTIME family (?:__)?osSp", done.stderr)
 
     def test_deps_sh_prepares_n64recomp_with_its_patches_before_the_runtime(self):
         text = (ROOT / "hosts/n64recomp/deps.sh").read_text()

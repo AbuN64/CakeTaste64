@@ -4,6 +4,7 @@ import importlib.util
 import re
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 HOST = Path(__file__).resolve().parents[1] / "hosts/n64recomp"
 
@@ -63,8 +64,8 @@ class HostBindingTests(unittest.TestCase):
 
 
 class HostRuntimeFamilyTests(unittest.TestCase):
-    families = [line.split(None, 1)[0] for line in (HOST / "HOST_RUNTIME").read_text().splitlines()
-                if line.strip() and not line.startswith("#")]
+    families: ClassVar[list[str]] = [line.split(None, 1)[0] for line in (HOST / "HOST_RUNTIME").read_text().splitlines()
+                                     if line.strip() and not line.startswith("#")]
 
     def test_every_family_has_its_evidence(self):
         for line in (HOST / "HOST_RUNTIME").read_text().splitlines():
