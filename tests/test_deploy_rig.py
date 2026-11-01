@@ -27,6 +27,7 @@ NEWER = "c" * 40
 HASH = "63576cbe05149fa7"
 CHECKOUT = "/home/abu/runs/b.c/Projects/AbuN64/CakeTaste64"
 ORACLE_LINK = deploy_rig.ORACLE_LINK
+TOOLKIT = "/home/abu/venv-taste"
 
 
 def suite_log(sha=SHA, imported=f"{CHECKOUT}/src/cake_taste/__init__.py", failed=None):
@@ -76,8 +77,10 @@ def pins_json(tmp: Path, commit: str, addrs: bytes) -> dict:
 class Shape(unittest.TestCase):
     def test_deploy_file_is_one_step_grammar_line_per_step_and_the_script_is_executable(self):
         lines = (ROOT / ".deploy").read_text().splitlines()
+        self.assertEqual(lines[0], f"deploy-env TOOLKIT={TOOLKIT}")
+        lines = lines[1:]
         steps = [line.split()[-1] for line in lines]
-        self.assertEqual(steps, ["suite", "oracle", "readback"])
+        self.assertEqual(steps, ["suite", "toolkit", "oracle", "readback", "commands"])
         self.assertEqual(steps, list(deploy_rig.STEPS))
         prefixes = ("rig run ci/deploy_rig.py ", "rig activate ci/deploy_rig.py /")
         self.assertTrue(all(line.startswith(prefixes) for line in lines))
@@ -85,21 +88,38 @@ class Shape(unittest.TestCase):
         self.assertTrue(SCRIPT.read_text().startswith("#!/usr/bin/env python3\n"))
 
     def test_scripts_parse_and_no_commit_pin_or_job_invoke_remains(self):
-        scripts = (deploy_rig.ORACLE, deploy_rig.READBACK, deploy_rig.LIVE, deploy_rig.SUITE)
+        scripts = (
+            deploy_rig.ORACLE,
+            deploy_rig.READBACK,
+            deploy_rig.LIVE,
+            deploy_rig.SUITE,
+            deploy_rig.TOOLKIT_BUILD,
+            deploy_rig.TOOLKIT_READBACK,
+        )
         for body in scripts:
             self.assertEqual(subprocess.run(["bash", "-n"], input=body, text=True, check=False).returncode, 0)
         source = SCRIPT.read_text()
         for retired in ("finish/", "flock", "waitfor", "ssh", "-j8", "Job Invoke", "butlermaster"):
             self.assertNotIn(retired, source)
 
-    def test_the_only_link_this_deploy_activates_is_its_own_live_oracle(self):
+    def test_the_links_this_deploy_activates_are_its_own_toolkit_and_live_oracle(self):
         lines = (ROOT / ".deploy").read_text().splitlines()
         activated = [line.split()[3] for line in lines if line.startswith("rig activate ")]
-        self.assertEqual(activated, [deploy_rig.ORACLE_LINK])
-        self.assertFalse(any(line.startswith("deploy-env") for line in lines))
+        self.assertEqual(activated, [TOOLKIT, deploy_rig.ORACLE_LINK])
+        self.assertEqual([line for line in lines if line.startswith("deploy-env")], [f"deploy-env TOOLKIT={TOOLKIT}"])
         source = SCRIPT.read_text()
-        for toolkit_fact in ("venv-decomp", "decomp tools", "--carry-from"):
+        for toolkit_fact in ("venv-decomp", "venv-unbake", "decomp tools", "--carry-from"):
             self.assertNotIn(toolkit_fact, source.split('"""', 2)[2])
+        self.assertFalse(hasattr(deploy_rig, "UNBAKE"))
+
+    def test_this_deploy_publishes_ruff_and_no_command_another_toolkit_publishes(self):
+        self.assertEqual(deploy_rig.PUBLISHED, ("ruff",))
+        for taken in ("decomp", "unbake", "unbake-run"):
+            self.assertNotIn(taken, deploy_rig.PUBLISHED)
+        gate = (ROOT / "ci/check").read_text()
+        self.assertIn('\n"$venv/bin/python" -m ruff check src tests\n', gate)
+        self.assertIn("pip install -q -e '.[dev]'", gate)
+        self.assertNotIn("\nruff ", gate)
 
     def test_the_build_resets_the_copied_deps_and_removes_a_failed_build_folder(self):
         for needle in ("reset -q --hard", 'trap \'rc=$?; test "$rc" = 0 || rm -rf "$BUILD"\' EXIT'):
@@ -121,7 +141,8 @@ class Shape(unittest.TestCase):
         self.assertIn('-DN64R_GEN_DIR="$gen"', build)
         self.assertIn(f"gen=$BUILD/recomp/{deploy_rig.VERSION}", build)
         self.assertNotIn("rig-state/behave/gen", build)
-        self.assertIn(f'"$src" {deploy_rig.RAGEWARS} {deploy_rig.RAGEWARS_LOCAL} {deploy_rig.UNBAKE} ', build)
+        self.assertIn(f'"$src" {deploy_rig.RAGEWARS} {deploy_rig.RAGEWARS_LOCAL} "$unbake" ', build)
+        self.assertIn("unbake=${2:?", build)
         self.assertNotIn("__", build.replace("__ORACLE_LINK__", ""))
         self.assertLess(len(build.encode()), 4096)  # Job Invoke bounds one Argv item
 
@@ -129,7 +150,7 @@ class Shape(unittest.TestCase):
         build = deploy_rig.ORACLE.replace("\\\n", " ")
         line = next(ln for ln in build.splitlines() if ln.startswith("sh hosts/n64recomp/recompile.sh"))
         self.assertEqual(len(shlex.split(line)), 1 + 1 + 7, line)
-        self.assertEqual(shlex.split(line)[-4:], [deploy_rig.RAGEWARS_LOCAL, deploy_rig.UNBAKE,
+        self.assertEqual(shlex.split(line)[-4:], [deploy_rig.RAGEWARS_LOCAL, "$unbake",
                                                   deploy_rig.RECOMP_PROFILE, deploy_rig.VERSION])
 
     def test_recompile_sh_runs_its_steps_in_order_and_stops_on_an_unnamed_address(self):
@@ -378,6 +399,58 @@ class DecompElfScript(unittest.TestCase):
             self.assertIn("set -eu", text)
 
 
+class ToolkitBuildScript(unittest.TestCase):
+    """TOOLKIT_BUILD run for real with a fake `python3` that makes a venv whose python installs or fails on demand."""
+
+    def build(self, tmp, fail=None, live=False):
+        shim = tmp / "shim"
+        shim.mkdir(exist_ok=True)
+        (shim / "python3").write_text(
+            """#!/bin/sh
+mkdir -p "$3/bin" && cat > "$3/bin/python" <<'EOF'
+#!/bin/sh
+case "$1 $2" in "-m pip") exit "${PIP_EXIT:-0}" ;; esac
+cat > /dev/null
+exit "${PIN_EXIT:-0}"
+EOF
+chmod +x "$3/bin/python"
+"""
+        )
+        (shim / "python3").chmod(0o755)
+        toolkit, build = tmp / "venv-taste", tmp / f"venv-taste.{SHA}"
+        if live:
+            (build / "bin").mkdir(parents=True)
+            (build / "bin/python").write_text("")
+            (build / "bin/python").chmod(0o755)
+            toolkit.symlink_to(build)
+        env = {**os.environ, "PATH": f"{shim}:{os.environ['PATH']}", "BUILD": str(build), **(fail or {})}
+        done = subprocess.run(
+            ["bash", "-c", deploy_rig.TOOLKIT_BUILD, "step", str(toolkit), "ruff==0.16.9"],
+            env=env, capture_output=True, text=True, check=False,
+        )
+        return done, build
+
+    def test_a_build_makes_the_venv_at_build_and_a_failed_install_or_pin_removes_it(self):
+        with tempfile.TemporaryDirectory() as raw:
+            done, build = self.build(Path(raw))
+            made = f"toolkit-build: {build}" in done.stdout
+            self.assertEqual((done.returncode, made, build.is_dir()), (0, True, True))
+        for failure in ({"PIP_EXIT": "1"}, {"PIN_EXIT": "1"}):
+            with tempfile.TemporaryDirectory() as raw:
+                done, build = self.build(Path(raw), fail=failure)
+                self.assertEqual((done.returncode, build.exists()), (1, False), done.stderr)
+
+    def test_an_existing_build_that_is_not_live_refuses_and_a_live_build_is_a_no_op(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            (tmp / f"venv-taste.{SHA}").mkdir()
+            done, build = self.build(tmp)
+            self.assertEqual((done.returncode, "exists" in done.stderr, build.is_dir()), (1, True, True))
+        with tempfile.TemporaryDirectory() as raw:
+            done, _ = self.build(Path(raw), live=True)
+            self.assertEqual((done.returncode, "live already" in done.stdout), (0, True))
+
+
 class FakeRun:
     """The bash seam: answers each script with the next scripted (exit code, stdout) and records the calls."""
 
@@ -390,7 +463,7 @@ class FakeRun:
         return self.answers.pop(0)
 
 
-ENVIRON = {deploy_rig.ENV: SHA}
+ENVIRON = {deploy_rig.ENV: SHA, "TOOLKIT": TOOLKIT}
 
 
 def step(argv, run, environ=ENVIRON):
@@ -399,7 +472,39 @@ def step(argv, run, environ=ENVIRON):
     return code, out.getvalue(), err.getvalue()
 
 
+class Host:
+    """A throwaway rig home: the toolkit link, the command directory beside it and CakeUnbake64's published unbake."""
+
+    def __init__(self, unbake=True):
+        self.published = unbake
+
+    def __enter__(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        home = Path(self.tmp.name)
+        self.toolkit = str(home / "venv-taste")
+        self.commands = home / "commands"
+        self.commands.mkdir()
+        self.unbake = home / "venv-unbake.abc"
+        (self.unbake / "bin").mkdir(parents=True)
+        (self.unbake / "bin/unbake").write_text("#!/bin/sh\n")
+        if self.published:
+            (self.commands / "unbake").symlink_to(home / "venv-unbake.abc/bin/unbake")
+        live = home / f"venv-taste.{SHA}"
+        (live / "bin").mkdir(parents=True)
+        (live / "bin/ruff").write_text("#!/bin/sh\n")
+        Path(self.toolkit).symlink_to(live)
+        self.environ = {deploy_rig.ENV: SHA, "TOOLKIT": self.toolkit}
+        return self
+
+    def __exit__(self, *exc):
+        self.tmp.cleanup()
+
+
 class Steps(unittest.TestCase):
+    def setUp(self):  # the steps read pyproject.toml from the tree they run in
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(ROOT)
+
     def test_an_unknown_step_and_a_bad_sha_refuse_before_any_script(self):
         run = FakeRun()
         for argv, environ in (
@@ -412,12 +517,46 @@ class Steps(unittest.TestCase):
             self.assertEqual((code, err.startswith("deploy refused: ")), (1, True))
         self.assertEqual(run.calls, [])
 
-    def test_oracle_builds_at_the_sha_and_a_failed_build_refuses(self):
+    def test_oracle_builds_at_the_sha_with_the_unbake_toolkit_found_by_command_and_a_failed_build_refuses(self):
+        with Host() as host:
+            run = FakeRun((0, ""))
+            self.assertEqual(step(["oracle"], run, host.environ)[0], 0)
+            self.assertEqual(run.calls[0][:2], (deploy_rig.ORACLE, (SHA, str(host.unbake.resolve()))))
+            code, _, err = step(["oracle"], FakeRun((1, "")), host.environ)
+            self.assertEqual((code, "oracle build exit 1, links unchanged" in err), (1, True))
+
+    def test_oracle_refuses_before_any_script_when_unbake_is_not_published(self):
+        with Host(unbake=False) as host:
+            run = FakeRun()
+            code, _, err = step(["oracle"], run, host.environ)
+            self.assertEqual((code, "is not published" in err), (1, True))
+            self.assertEqual(run.calls, [])
+
+    def test_toolkit_installs_the_pinned_dev_extra_of_the_tree_and_a_failed_build_refuses(self):
         run = FakeRun((0, ""))
-        self.assertEqual(step(["oracle"], run)[0], 0)
-        self.assertEqual(run.calls[0][:2], (deploy_rig.ORACLE, (SHA,)))
-        code, _, err = step(["oracle"], FakeRun((1, "")))
-        self.assertEqual((code, "oracle build exit 1, links unchanged" in err), (1, True))
+        self.assertEqual(step(["toolkit"], run)[0], 0)
+        self.assertEqual(run.calls[0][:2], (deploy_rig.TOOLKIT_BUILD, (TOOLKIT, "ruff==0.16.9")))
+        code, _, err = step(["toolkit"], FakeRun((1, "")))
+        self.assertEqual((code, "toolkit build exit 1, links unchanged" in err), (1, True))
+
+    def test_commands_reads_the_toolkit_back_then_publishes_ruff_by_name(self):
+        with Host() as host:
+            run = FakeRun((0, "toolkit-pin: ruff 0.16.9\n"))
+            code, out, _ = step(["commands"], run, host.environ)
+            self.assertEqual(code, 0, out)
+            args = (host.toolkit, f"{host.toolkit}.{SHA}", "ruff==0.16.9")
+            self.assertEqual(run.calls[0][:2], (deploy_rig.TOOLKIT_READBACK, args))
+            self.assertIn(f"publish: ruff -> {host.commands}", out)
+            self.assertEqual(os.readlink(host.commands / "ruff"), f"{host.toolkit}/bin/ruff")
+            code, _, err = step(["commands"], FakeRun((1, "toolkit: ruff is 0.1")), host.environ)
+            self.assertEqual((code, "toolkit readback exit 1: toolkit: ruff is 0.1" in err), (1, True))
+
+    def test_a_toolkit_env_that_is_not_an_absolute_path_refuses_before_any_script(self):
+        run = FakeRun()
+        for environ in ({deploy_rig.ENV: SHA}, {deploy_rig.ENV: SHA, "TOOLKIT": "venv-taste"}):
+            code, _, err = step(["toolkit"], run, environ)
+            self.assertEqual((code, "TOOLKIT is not an absolute path" in err), (1, True))
+        self.assertEqual(run.calls, [])
 
     def test_readback_needs_two_equal_hashes_and_the_live_link_at_the_sha(self):
         self.assertEqual(step(["readback"], FakeRun((0, readback_log(SHA))))[0], 0)

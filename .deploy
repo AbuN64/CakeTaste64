@@ -1,3 +1,6 @@
+deploy-env TOOLKIT=/home/abu/venv-taste
 rig run ci/deploy_rig.py suite
+rig activate ci/deploy_rig.py /home/abu/venv-taste toolkit
 rig activate ci/deploy_rig.py /home/abu/rig-state/tas/live/oracle oracle
 rig run ci/deploy_rig.py readback
+rig run ci/deploy_rig.py commands

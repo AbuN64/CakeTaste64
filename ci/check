@@ -1,8 +1,17 @@
 #!/bin/sh
 # Lint and the unittest suite; the C++ host tests compile against mocks with the stock c++.
 # Not here: the N64Recomp oracle build, which needs the ROM and the rig.
+# The dev tools come from this repository's own [dev] extra, never from PATH or a deploy: a private venv under the
+# git-ignored .venv/, keyed by the pyproject.toml hash and reused while that file is unchanged.
 set -eu
 cd "$(dirname "$0")/.."
 ci/abucache-audit
-ruff check src tests
-PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}" python3 -m unittest discover -s tests
+venv=".venv/ci-$(sha256sum pyproject.toml | cut -c1-16)"
+if [ ! -f "$venv/.ready" ]; then
+    rm -rf "$venv"
+    python3 -m venv "$venv"
+    "$venv/bin/python" -m pip install -q -e '.[dev]'
+    touch "$venv/.ready"
+fi
+"$venv/bin/python" -m ruff check src tests
+"$venv/bin/python" -m unittest discover -s tests

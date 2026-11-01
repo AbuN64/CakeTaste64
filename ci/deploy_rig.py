@@ -1,46 +1,63 @@
 #!/usr/bin/env python3
 """The rig deploy steps of CakeTaste64: one step per `.deploy` line, each an entry point of this file. The close runs
 them in file order on the rig at the landed revision, from the root of the tree, with
-LANDED_Projects_AbuN64_CakeTaste64 set; it appends its own landing arguments, which no step reads. A step prints its
-facts and exits 0, or prints one line on stderr and exits 1; it calls no other tool of the close. CakeTaste64 activates
-exactly one link, the live oracle. The decomp toolkit link (/home/abu/venv-decomp) is AbuDecomp64's: this deploy never
-activates it, and the oracle recompile imports cake_taste from the tree, never from the toolkit.
+LANDED_Projects_AbuN64_CakeTaste64 set and `deploy-env TOOLKIT=<live link>` in the environment; it appends its own
+landing arguments, which no step reads. A step prints its facts and exits 0, or prints one line on stderr and exits 1;
+it calls no other tool of the close. CakeTaste64 activates two links, both its own: the live oracle and its dev
+toolkit (the live link `deploy-env TOOLKIT=` names, which no other repository names). The toolkit holds the pinned
+`[dev]` extra of pyproject.toml and its one command, `ruff`, is published by name into the one command directory
+`commands` beside the toolkit link (the directory the rig job PATH holds); the gate does not call it, it builds its own venv from `[dev]`. Exactly one
+toolkit publishes a given name: AbuDecomp64 publishes `decomp` and CakeUnbake64 `unbake` and `unbake-run`, never `ruff`. The
+decomp toolkit link is AbuDecomp64's and the unbake toolkit CakeUnbake64's: this deploy never activates them, and
+the oracle recompile imports cake_taste from the tree, never from a toolkit.
 
   suite      the full test suite (unittest discover over tests/) runs in the tree with its src first on the import path.
              The imported cake_taste path is printed and must lie inside the tree. Any failure refuses (one line naming
              the first failing test) with every live link untouched;
+  toolkit    the toolkit activation (BUILD is <toolkit>.<SHA>): a fresh venv at BUILD gets the `[dev]` extra of the
+             tree's pyproject.toml (every requirement an exact pin) and each installed version must equal its pin.
+             Only on exit 0 does the close flip the toolkit link; a failed build removes BUILD, and a build that is the
+             live target already is a no-op;
   oracle     the oracle activation (BUILD is <oracle>.<SHA>): builds n64host into BUILD (pinned deps copied from
              ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with the build tool at -j"$JOBS". The recompile
              runs first and the decomp names every function: N64Recomp built at its pin with the host's patches, the
-             decomp ELF of the PINS RageWars commit (decomp_elf.sh), a taste profile derived for BUILD, `taste recomp
-             generate` into BUILD/recomp; oracle-pins.json records that decomp's commit and the sha256 of its
-             symbol_addrs.txt, which is kept in BUILD/gen; an address the decomp does not name stops it, listed,
-             never a func_ fallback. n64host is configured from that gen dir. Then the oracle self-check runs on that
-             build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the
+             decomp ELF of the PINS RageWars commit (decomp_elf.sh, whose local.mk the unbake toolkit behind the
+             command `unbake` writes: CakeUnbake64's own, found through the command directory), a taste profile derived
+             for BUILD, `taste recomp generate` into BUILD/recomp; oracle-pins.json records that decomp's commit and the
+             sha256 of its symbol_addrs.txt, which is kept in BUILD/gen; an address the decomp does not name stops it,
+             listed, never a func_ fallback. n64host is configured from that gen dir. Then the oracle self-check runs on
+             that build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the
              oracle link; a build that is the live target already is a no-op;
   readback   the live oracle link must read <oracle>.<SHA>; its oracle-pins.json must record the PINS RageWars
              commit as the decomp the names came from, the symbol_addrs.txt kept beside the headers must hash to
              the pinned sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name
              osPiStartDma;
-             then the self-check again through the live link.
+             then the self-check again through the live link;
+  commands   the live toolkit link must read <toolkit>.<SHA> with every pin installed. Then each command (`ruff`) is
+             linked by name into the command directory, through the live link (so it follows every later switch), and
+             read back: it resolves into the live toolkit. The deploy removes nothing.
 
+  deploy-env TOOLKIT=<live link>
   rig run ci/deploy_rig.py suite
-  rig activate ci/deploy_rig.py /home/abu/rig-state/tas/live/oracle oracle
-  rig run ci/deploy_rig.py readback"""
+  rig activate ci/deploy_rig.py <toolkit live link> toolkit
+  rig activate ci/deploy_rig.py <oracle live link> oracle
+  rig run ci/deploy_rig.py readback
+  rig run ci/deploy_rig.py commands"""
 
 import os
 import re
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 ENV = "LANDED_Projects_AbuN64_CakeTaste64"
 RAGEWARS = "http://10.10.10.130:18556/Projects/RageWars.git"
 RAGEWARS_LOCAL = "/home/abu/code/ragewars-decomp"
-# The live link of the unbake toolkit (CakeUnbake64's, the one the decomp's own build runs): it writes the clone's
-# local.mk. The unbake on PATH is the decomp toolkit's own, which pins an older one.
-UNBAKE = "/home/abu/venv-unbake"
+COMMANDS = "commands"  # the command directory beside the toolkit link
+PUBLISHED = ("ruff",)  # this repository's toolkit command; decomp, unbake and unbake-run are other repositories'
+PIN = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;,<>=!~]+)")
 RECOMP_PROFILE = "/home/abu/rig-state/behave/taste-profile.json"
 VERSION = "us-rev1"
 PACKAGE = "cake_taste"
@@ -93,6 +110,7 @@ SELFCHECK = r"""selfcheck() {
 ORACLE = (
     SELFCHECK
     + r"""set -eu
+unbake=${2:?the unbake toolkit}
 sha=$(git rev-parse HEAD)
 if [ -x "$BUILD/n64host" ] && [ "$(readlink -f "__ORACLE_LINK__")" = "$(readlink -f "$BUILD")" ]; then
   echo "oracle: $BUILD is live already, build skipped"
@@ -142,7 +160,7 @@ selfcheck "$BUILD/n64host"
 ).replace("__ORACLE_LINK__", ORACLE_LINK)
 for token, value in (
     ("__RAGEWARS_LOCAL__", RAGEWARS_LOCAL),
-    ("__UNBAKE__", UNBAKE),
+    ("__UNBAKE__", '"$unbake"'),
     ("__RAGEWARS__", RAGEWARS),
     ("__RECOMP_PROFILE__", RECOMP_PROFILE),
     ("__VERSION__", VERSION),
@@ -273,6 +291,59 @@ if failed or not passed:
 """
 
 
+# PINCHECK_TOOLKIT REQUIREMENT...: run by a toolkit's own python, each `name==version` requirement installed at exactly
+# that version, one `toolkit-pin: name version` line per requirement.
+PINCHECK_TOOLKIT = r"""import importlib.metadata
+import sys
+
+for requirement in sys.argv[1:]:
+    name, _, pinned = requirement.partition("==")
+    installed = importlib.metadata.version(name)
+    print(f"toolkit-pin: {name} {installed}")
+    if installed != pinned:
+        sys.exit(f"toolkit: {name} is {installed}, pyproject pins {pinned}")
+"""
+
+# TOOLKIT_BUILD TOOLKIT REQUIREMENT...: the toolkit activation, run in the tree with BUILD (<toolkit>.<sha>) set by the
+# close. BUILD itself is the fresh venv (the python3 of the job), the pinned requirements are installed into it and each
+# is read back; exit 0 is the gate for the close's flip and any other exit removes BUILD so the next activation of the
+# sha starts clean. A BUILD that is the live toolkit already is a no-op.
+TOOLKIT_BUILD = (
+    r"""set -u
+toolkit=$1
+shift
+: "${BUILD:?the close sets BUILD for an activation}"
+if [ -x "$BUILD/bin/python" ] && [ "$(readlink -f "$toolkit")" = "$(readlink -f "$BUILD")" ]; then
+  echo "toolkit: $BUILD is live already, build skipped"
+  exit 0
+fi
+[ -e "$BUILD" ] && { echo "deploy-error: $BUILD exists" >&2; exit 1; }
+trap 'rc=$?; test "$rc" = 0 || rm -rf "$BUILD"' EXIT
+python3 -m venv "$BUILD" || { echo "deploy-error: venv exit $?" >&2; exit 1; }
+"$BUILD/bin/python" -m pip install -q "$@" || { echo "deploy-error: pip install exit $?" >&2; exit 1; }
+"$BUILD/bin/python" - "$@" <<'PY' || exit 1
+"""
+    + PINCHECK_TOOLKIT
+    + r"""PY
+echo "toolkit-build: $BUILD"
+"""
+)
+
+# TOOLKIT_READBACK TOOLKIT BUILD REQUIREMENT...: the live toolkit link reads BUILD and holds every pin through the link.
+TOOLKIT_READBACK = (
+    r"""set -u
+toolkit=$1 build=$2
+shift 2
+[ "$(readlink -f "$toolkit")" = "$(readlink -f "$build")" ] \
+  || { echo "toolkit: $toolkit reads $(readlink -f "$toolkit"), not the build $build" >&2; exit 1; }
+"$toolkit/bin/python" - "$@" <<'PY' || exit 1
+"""
+    + PINCHECK_TOOLKIT
+    + r"""PY
+"""
+)
+
+
 
 
 class Refused(Exception):
@@ -299,15 +370,58 @@ def facts(log: str, prefix: str) -> dict[str, str]:
     return found
 
 
-def landed(environ: dict[str, str]) -> str:
-    """The landed SHA, from its explicit variable."""
+def landed(environ: dict[str, str]) -> tuple[str, str]:
+    """The landed SHA, from its explicit variable, and the live toolkit link, from `deploy-env TOOLKIT=`."""
     sha = environ.get(ENV, "")
     if not SHA.fullmatch(sha):
         raise Refused(f"{ENV} is not a 40-hex SHA: {sha!r}")
-    return sha
+    toolkit = environ.get("TOOLKIT", "")
+    if not toolkit.startswith("/"):
+        raise Refused(f"TOOLKIT is not an absolute path (a `deploy-env TOOLKIT=<live link>` line): {toolkit!r}")
+    return sha, toolkit
 
 
-def step_suite(sha: str, run: Bash) -> None:
+def commands(toolkit: str) -> str:
+    """The one command directory, beside the live toolkit link: the folder the rig job PATH holds."""
+    return os.path.join(os.path.dirname(toolkit), COMMANDS)
+
+
+def unbake_toolkit(toolkit: str) -> str:
+    """The unbake toolkit (CakeUnbake64's own), found through its published command `unbake`."""
+    command = os.path.join(commands(toolkit), "unbake")
+    real = os.path.realpath(command)
+    if not os.path.isfile(real):
+        raise Refused(f"{command} is not published: CakeUnbake64's deploy publishes unbake, and this one needs it")
+    return os.path.dirname(os.path.dirname(real))
+
+
+def dev_requirements(root: Path) -> list[str]:
+    """The `[dev]` extra of the tree's pyproject.toml: the one list the toolkit installs, every entry an exact pin."""
+    with open(root / "pyproject.toml", "rb") as handle:
+        found = tomllib.load(handle).get("project", {}).get("optional-dependencies", {}).get("dev", [])
+    loose = [requirement for requirement in found if not PIN.fullmatch(requirement)]
+    if loose or not found:
+        raise Refused(f"the [dev] extra of pyproject.toml must pin every requirement with ==: {loose or 'it is empty'}")
+    return list(found)
+
+
+def publish(toolkit: str) -> list[str]:
+    """Link each command of this repository into the command directory by name, through the live toolkit link, and
+    read each back: it must resolve into the live toolkit. Returns the names published."""
+    folder = commands(toolkit)
+    os.makedirs(folder, exist_ok=True)
+    live = os.path.realpath(toolkit)
+    for command in PUBLISHED:
+        link = os.path.join(folder, command)
+        tmp = f"{link}.{os.getpid()}.new"
+        os.symlink(os.path.join(toolkit, "bin", command), tmp)
+        os.replace(tmp, link)
+        if os.path.commonpath([os.path.realpath(link), live]) != live:
+            raise Refused(f"{link} resolves to {os.path.realpath(link)}, outside the live toolkit {live}")
+    return list(PUBLISHED)
+
+
+def step_suite(sha: str, toolkit: str, run: Bash) -> None:
     code, out = run(SUITE.replace("__RUNNER__", RUNNER), PYTHON, capture=True)
     sys.stdout.write(out)
     found = facts(out, "suite-")
@@ -325,13 +439,19 @@ def step_suite(sha: str, run: Bash) -> None:
         raise Refused(f"suite failed at {first}: {found.get('suite-summary', 'no summary')}")
 
 
-def step_oracle(sha: str, run: Bash) -> None:
-    code, _ = run(ORACLE, sha)
+def step_toolkit(sha: str, toolkit: str, run: Bash) -> None:
+    code, _ = run(TOOLKIT_BUILD, toolkit, *dev_requirements(Path.cwd()))
+    if code:
+        raise Refused(f"toolkit build exit {code}, links unchanged")
+
+
+def step_oracle(sha: str, toolkit: str, run: Bash) -> None:
+    code, _ = run(ORACLE, sha, unbake_toolkit(toolkit))
     if code:
         raise Refused(f"oracle build exit {code}, links unchanged")
 
 
-def step_readback(sha: str, run: Bash) -> None:
+def step_readback(sha: str, toolkit: str, run: Bash) -> None:
     code, out = run(READBACK, capture=True)
     sys.stdout.write(out)
     hashes = HASH.findall(out)
@@ -345,10 +465,20 @@ def step_readback(sha: str, run: Bash) -> None:
         raise Refused(f"the live oracle reads {live}, not {ORACLE_LINK}.{sha}")
 
 
+def step_commands(sha: str, toolkit: str, run: Bash) -> None:
+    code, out = run(TOOLKIT_READBACK, toolkit, f"{toolkit}.{sha}", *dev_requirements(Path.cwd()), capture=True)
+    sys.stdout.write(out)
+    if code:
+        raise Refused(f"toolkit readback exit {code}: {last_line(out, 'no output')}")
+    sys.stdout.write(f"publish: {', '.join(publish(toolkit))} -> {commands(toolkit)}\n")
+
+
 STEPS = {
     "suite": step_suite,
+    "toolkit": step_toolkit,
     "oracle": step_oracle,
     "readback": step_readback,
+    "commands": step_commands,
 }
 
 
@@ -358,7 +488,7 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None, r
         step = STEPS.get(argv[0] if argv else "")
         if step is None:
             raise Refused(f"the step is one of {', '.join(STEPS)}, not {argv[0] if argv else 'nothing'!r}")
-        step(landed(dict(os.environ) if environ is None else environ), run)
+        step(*landed(dict(os.environ) if environ is None else environ), run)
     except Refused as refusal:
         sys.stderr.write(f"deploy refused: {refusal}\n")
         return 1

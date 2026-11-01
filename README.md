@@ -49,7 +49,7 @@ Profiles, commands and the stream are in [docs/usage.md](docs/usage.md).
 ## Development
 
 ```sh
-pip install -e '.[dev]' && python -m unittest discover -s tests && ruff check src tests
+sh ci/check   # builds .venv/ci-<pyproject hash> from '.[dev]', then runs ruff and the unittest suite from it
 ```
 
 ## License
