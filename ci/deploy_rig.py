@@ -25,11 +25,11 @@ over as it is.
              generate` into BUILD/recomp; oracle-pins.json records that decomp's commit and the sha256 of its
              symbol_addrs.txt, which is kept in BUILD/gen; an address the decomp does not name stops it, listed,
              never a func_ fallback. n64host is configured from that gen dir. Then the oracle self-check runs on that
-             build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the oracle link; a
-             build that is the live target already is a no-op;
-  readback   the live oracle link must read <oracle>.<SHA>; its oracle-pins.json must record the PINS RageWars commit as
-             the decomp the names came from, the symbol_addrs.txt kept beside the headers must hash to the pinned
-             sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name osPiStartDma;
+             build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the
+             oracle link; a build that is the live target already is a no-op;
+  readback   the live oracle link must read <oracle>.<SHA>; its oracle-pins.json must record the PINS RageWars
+             commit as the decomp the names came from, the symbol_addrs.txt kept beside the headers must hash to
+             the pinned sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name osPiStartDma;
              then the self-check again through the live link.
 
   deploy-env TOOLKIT=/home/abu/venv-decomp
