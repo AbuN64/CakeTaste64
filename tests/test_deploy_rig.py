@@ -25,9 +25,10 @@ spec.loader.exec_module(deploy_rig)
 SHA = "7a6ab5ce4712939ea310ee62e2fbc759920f6363"
 NEWER = "c" * 40
 HASH = "63576cbe05149fa7"
-CHECKOUT = "/home/abu/runs/b.c/Projects/AbuN64/CakeTaste64"
+SITE = f"{tempfile.gettempdir()}/example"  # a mocked rig home: no host path is tracked
+CHECKOUT = f"{SITE}/runs/b.c/Projects/AbuN64/CakeTaste64"
 ORACLE_LINK = deploy_rig.ORACLE_LINK
-TOOLKIT = "/home/abu/venv-taste"
+TOOLKIT = f"{SITE}/venv-taste"  # the step takes it from its environment: any absolute path
 
 
 def suite_log(sha=SHA, imported=f"{CHECKOUT}/src/cake_taste/__init__.py", failed=None):
@@ -77,12 +78,14 @@ def pins_json(tmp: Path, commit: str, addrs: bytes) -> dict:
 class Shape(unittest.TestCase):
     def test_deploy_file_is_one_step_grammar_line_per_step_and_the_script_is_executable(self):
         lines = (ROOT / ".deploy").read_text().splitlines()
-        self.assertEqual(lines[0], f"deploy-env TOOLKIT={TOOLKIT}")
-        lines = lines[1:]
+        self.assertEqual(lines[:2], ["deploy-input TOOLKIT", "deploy-input ORACLE"])
+        self.assertNotIn("deploy-env", "\n".join(lines))
+        self.assertNotIn("/home", "\n".join(lines))
+        lines = lines[2:]
         steps = [line.split()[-1] for line in lines]
         self.assertEqual(steps, ["suite", "toolkit", "oracle", "readback", "commands"])
         self.assertEqual(steps, list(deploy_rig.STEPS))
-        prefixes = ("rig run ci/deploy_rig.py ", "rig activate ci/deploy_rig.py /")
+        prefixes = ("rig run ci/deploy_rig.py ", "rig activate ci/deploy_rig.py $")
         self.assertTrue(all(line.startswith(prefixes) for line in lines))
         self.assertTrue((ROOT / "ci/deploy_rig.py").stat().st_mode & stat.S_IXUSR)
         self.assertTrue(SCRIPT.read_text().startswith("#!/usr/bin/env python3\n"))
@@ -105,8 +108,9 @@ class Shape(unittest.TestCase):
     def test_the_links_this_deploy_activates_are_its_own_toolkit_and_live_oracle(self):
         lines = (ROOT / ".deploy").read_text().splitlines()
         activated = [line.split()[3] for line in lines if line.startswith("rig activate ")]
-        self.assertEqual(activated, [TOOLKIT, deploy_rig.ORACLE_LINK])
-        self.assertEqual([line for line in lines if line.startswith("deploy-env")], [f"deploy-env TOOLKIT={TOOLKIT}"])
+        self.assertEqual(activated, ["$TOOLKIT", "$ORACLE"])
+        declared = [line for line in lines if line.startswith("deploy-input")]
+        self.assertEqual(declared, ["deploy-input TOOLKIT", "deploy-input ORACLE"])
         source = SCRIPT.read_text()
         for toolkit_fact in ("venv-decomp", "venv-unbake", "decomp tools", "--carry-from"):
             self.assertNotIn(toolkit_fact, source.split('"""', 2)[2])
