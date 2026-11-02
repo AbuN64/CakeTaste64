@@ -73,7 +73,7 @@ class LockstepDocsTest(unittest.TestCase):
         source = (HOST / "lockstep.cpp").read_text(encoding="utf-8")
         names = set(re.findall(r"getenv\(\"(N64R_[A-Z_]+)\"\)", source))
         self.assertEqual(names, {"N64R_LOCKSTEP_DIR", "N64R_LOCKSTEP_RAM", "N64R_LOCKSTEP_CALLS",
-                                 "N64R_LOCKSTEP_WATCH"})
+                                 "N64R_LOCKSTEP_WATCH", "N64R_LOCKSTEP_DUMP"})
         docs = (HOST / "RUNTIME.md").read_text(encoding="utf-8")
         for name in names:
             self.assertIn(f"`{name}`", docs)
@@ -115,14 +115,11 @@ class LockstepRecorderTest(unittest.TestCase):
             self.assertEqual([p[0] for p in hits[1]["pages"]], [1])
             self.assertEqual(hits[2]["pages"], [])
             self.assertEqual(hits[0]["vi"], 42)
-            store = (out / "pages.bin").read_bytes()
-            pages = {}
-            for at in range(0, len(store), 16 + 4096):
-                _, _, h = struct.unpack_from("<IIQ", store, at)
-                pages[h] = store[at + 16:at + 16 + 4096]
-                self.assertEqual(fnv(pages[h]), h)
-            self.assertEqual(pages[int(hits[0]["pages"][2][1], 16)][:4], bytes.fromhex("11223344"))
-            self.assertEqual(pages[int(hits[1]["pages"][0][1], 16)][:1], b"\xab")
+            # the record is hashes only: the canonical bytes hash to what the hits list, and no page bytes are kept
+            page2 = bytes.fromhex("11223344") + struct.pack(">I", 0x80001000) + bytes(4096 - 8)
+            self.assertEqual(int(hits[0]["pages"][2][1], 16), fnv(page2))
+            self.assertEqual(int(hits[1]["pages"][0][1], 16), fnv(b"\xab" + bytes(4095)))
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ["lockstep.jsonl"])
             calls = [x for x in lines if x["k"] == "call"]
             # the first 8 calls each caller makes of a function, then the power-of-two ordinals (8),
             # whatever the call number
@@ -178,12 +175,39 @@ class LockstepPollTest(unittest.TestCase):
             self.assertEqual(polls[2]["pages"], [])
             hit = next(x for x in lines if x["k"] == "hit")
             self.assertEqual(len(hit["pages"]), 4)
-            store = (out / "pages.bin").read_bytes()
-            pages = {}
-            for at in range(0, len(store), 16 + 4096):
-                pg, _, h = struct.unpack_from("<IIQ", store, at)
-                pages[h] = (pg, store[at + 16:at + 16 + 4096])
-                self.assertEqual(fnv(pages[h][1]), h)
-            self.assertEqual(pages[int(polls[0]["pages"][2][1], 16)][1][:4], bytes.fromhex("11223344"))
-            self.assertEqual(pages[int(polls[1]["pages"][0][1], 16)], (1, pages[int(polls[1]["pages"][0][1], 16)][1]))
-            self.assertEqual(pages[int(polls[1]["pages"][0][1], 16)][1][:1], b"\xab")
+            self.assertEqual(int(polls[0]["pages"][2][1], 16), fnv(bytes.fromhex("11223344") + bytes(4092)))
+            self.assertEqual(int(polls[1]["pages"][0][1], 16), fnv(b"\xab" + bytes(4095)))
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ["lockstep.jsonl"])  # hashes only, no dump
+
+    def test_dump_replay_writes_only_the_named_pages_at_its_poll_and_exits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            # returns 4 when the movie runs out: exit 0 means the dump poll ended the process
+            (path / "driver.cpp").write_text(POLL_DRIVER.replace("return 0;\n}", "return 4;\n}"))
+            exe = path / "driver"
+            subprocess.run(["g++", "-std=c++17", "-O1", "-Wall", "-Werror", str(HOST / "lockstep.cpp"),
+                            str(path / "driver.cpp"), "-o", str(exe), "-lpthread"], check=True, capture_output=True,
+                           text=True)
+            out = path / "ls"
+            out.mkdir()
+            (out / "lockstep.jsonl").write_text("recorded\n")  # the record the dump replays: left as it is
+            env = dict(os.environ, N64R_LOCKSTEP_DIR=str(out), N64R_LOCKSTEP_RAM="0x4000",
+                       N64R_LOCKSTEP_DUMP="2:1,2")
+            result = subprocess.run([str(exe)], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((out / "lockstep.jsonl").read_text(), "recorded\n")
+            self.assertEqual(sorted(p.name for p in (out / "dump").iterdir()), ["2"])
+            self.assertEqual(sorted(p.name for p in (out / "dump" / "2").iterdir()), ["dump.bin"])
+            data = (out / "dump" / "2" / "dump.bin").read_bytes()
+            self.assertEqual(len(data), 2 * (16 + 4096))
+            got = {}
+            for at in range(0, len(data), 16 + 4096):
+                pg, zero, h = struct.unpack_from("<IIQ", data, at)
+                got[pg] = data[at + 16:at + 16 + 4096]
+                self.assertEqual((zero, fnv(got[pg])), (0, h))
+            self.assertEqual(got[1], b"\xab" + bytes(4095))  # poll 2's state: the byte stored before it
+            self.assertEqual(got[2], bytes.fromhex("11223344") + bytes(4092))
+            bad = subprocess.run([str(exe)], env=dict(env, N64R_LOCKSTEP_DUMP="2:9"), capture_output=True,
+                                 text=True, timeout=30)
+            self.assertEqual(bad.returncode, 3)  # a page outside RDRAM: the recorder stays off
+            self.assertIn("lockstep dump off", bad.stderr)

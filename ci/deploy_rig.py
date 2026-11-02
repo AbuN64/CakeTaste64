@@ -74,10 +74,14 @@ Bash = Callable[..., "tuple[int, str]"]
 # as tas_oracle.start); the job fails when the two state hashes differ.
 SELFCHECK = r"""selfcheck() {
   host=$1
-  movie=$HOME/rig-state/tas/runs/plays/20261030T142016Z-boot-idle/movie.raw
   spec=$HOME/rig-state/tas/runs/state-spec/b1d54eea5d7361537883/oracle.spec
-  test -x "$host"; test -f "$movie"; test -f "$spec"
+  for need in "$host" "$spec" "$HOME/code/ragewars-decomp/roms/baserom.us-rev1.z64"; do
+    test -e "$need" || { echo "selfcheck: $need is missing" >&2; exit 1; }
+  done
   work=$(mktemp -d)
+  # idle movie: play dirs get pruned
+  movie=$work/movie.raw
+  yes '0000 0 0' | head -n 600 > "$movie"
   first=
   for n in 1 2; do
     out=$work/$n

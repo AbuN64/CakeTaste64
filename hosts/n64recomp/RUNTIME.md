@@ -373,10 +373,15 @@ under `N64R_` names and runs with no display server (no X11, no Wayland composit
   an `N64R_TAS_PLAY` movie with its poll index, VI count, each controller's pad
   word (buttons << 16 | x << 8 | y) and the pages changed since the previous
   poll, `call`/`ret` for its first calls,
-  `watch`) and `pages.bin` (each distinct page once: u32 page, u32 0, u64 hash,
-  4096 bytes). Pages are hashed and stored in canonical big-endian byte order
-  (each RDRAM word byte-swapped back); the hash is FNV-1a over little-endian
-  64-bit words.
+  `watch`). The record is hashes only: no page bytes are kept. Pages are hashed
+  in canonical big-endian byte order (each RDRAM word byte-swapped back); the
+  hash is FNV-1a over little-endian 64-bit words.
+- `N64R_LOCKSTEP_DUMP`: `POLL:PAGE,PAGE,...`, the dump replay of a recorded
+  movie (with `N64R_LOCKSTEP_DIR` the record's folder): nothing is recorded and
+  `lockstep.jsonl` is left as it is; at poll POLL the named pages go to
+  `dump/POLL/dump.bin` (per page: u32 page, u32 0, u64 hash, then its 4096
+  canonical bytes; written beside it, then renamed) and the host exits 0, so the
+  dump is complete when the process has exited.
 - `N64R_LOCKSTEP_RAM`: RDRAM bytes hashed (default 0x800000).
 - `N64R_LOCKSTEP_CALLS`: calls recorded per caller and function (default 8), then every call at a power-of-two ordinal; each with its caller, ordinal and poll frame, and at its return the 16-word windows its a0..a3 RDRAM pointers name (`m`).
 - `N64R_LOCKSTEP_WATCH`: an RDRAM address; every change of that word seen at an

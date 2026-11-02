@@ -238,6 +238,13 @@ class Shape(unittest.TestCase):
         for name in (jtbl, funcs):
             self.assertTrue((ROOT / "hosts/n64recomp/patches" / name).is_file())
 
+    def test_the_selfcheck_writes_its_idle_movie_and_names_a_missing_input(self):
+        # 11-02: plays/20261030T142016Z-boot-idle was pruned and `test -f "$movie"` under set -e exited 1 silently,
+        # so the trap removed the freshly linked n64host with nothing in the log.
+        self.assertNotIn("runs/plays", deploy_rig.SELFCHECK)
+        self.assertIn("yes '0000 0 0' | head -n 600 > \"$movie\"", deploy_rig.SELFCHECK)
+        self.assertIn('echo "selfcheck: $need is missing" >&2; exit 1', deploy_rig.SELFCHECK)
+
     def test_the_build_uses_the_job_width_and_the_activation_folder(self):
         self.assertIn('cmake --build "$BUILD/build" -j"$JOBS"', deploy_rig.ORACLE)
         self.assertIn('mkdir "$BUILD"', deploy_rig.ORACLE)

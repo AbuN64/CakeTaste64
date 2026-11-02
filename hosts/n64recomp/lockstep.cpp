@@ -15,8 +15,11 @@
 //     ret   that call's return: fn, i, r = v0, v1, f0 (raw 64-bit), m = the 16-word windows the argument registers
 //           a0..a3 point at in RDRAM, read at the return (an RDRAM address inside a window reads pppppppp)
 //     watch the word at N64R_LOCKSTEP_WATCH changed between two hooks: at (enter|ret), fn, old, new
-//   pages.bin       each distinct page once: u32 page, u32 0, u64 hash (little-endian), then its 4096 bytes
-// Pages are hashed and stored in canonical byte order (big-endian, as the cartridge-era CPU saw them): RDRAM keeps
+// The record is hashes only: no page bytes. Bytes come from a dump: N64R_LOCKSTEP_DUMP=POLL:PAGE,PAGE,... replays the
+// same movie, records nothing (lockstep.jsonl is left as it is), and at poll POLL writes
+//   dump/POLL/dump.bin  each named page: u32 page, u32 0, u64 hash (little-endian), then its 4096 bytes
+// (written beside it, then renamed) and ends the process (exit 0), so the dump is complete when the host has exited.
+// Pages are hashed and dumped in canonical byte order (big-endian, as the cartridge-era CPU saw them): RDRAM keeps
 // each 32-bit word in host order (byte accesses use address ^ 3), so every word is byte-swapped back first.
 // The hash is FNV-1a over the little-endian 64-bit words of those bytes.
 #include <atomic>
@@ -28,7 +31,6 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -51,7 +53,8 @@ struct CallerFnHash {
     }
 };
 std::mutex lock;
-int log_fd = -1, store_fd = -1;
+int log_fd = -1;
+int64_t dump_poll = -1;  // N64R_LOCKSTEP_DUMP: the poll whose named pages are dumped; -1 records
 uint32_t ram_bytes = 0x800000, max_calls = 8, points = 0, watch_phys = 0, watch_value = 0;
 bool watching = false;
 unsigned watch_lines = 0;
@@ -59,7 +62,8 @@ unsigned watch_lines = 0;
 std::unordered_map<const char *, Fn> &fns = *new std::unordered_map<const char *, Fn>;
 // Calls each caller has made of each function, recorded or not: the call's ordinal.
 std::unordered_map<CallerFn, unsigned, CallerFnHash> &ordinals = *new std::unordered_map<CallerFn, unsigned, CallerFnHash>;
-std::unordered_set<uint64_t> &stored = *new std::unordered_set<uint64_t>;
+std::vector<uint32_t> &dump_pages = *new std::vector<uint32_t>;
+std::string &dump_dir = *new std::string;
 thread_local std::vector<Frame> frames;
 // The pages one stream of points saw last: each stream (function hits, controller polls) lists at a point the 4 KiB
 // pages whose hash changed since its own previous point (every page at its first), so the poll stream reads the same
@@ -115,6 +119,66 @@ std::string windows(const uint8_t *rdram, const uint32_t *a) {
     return out + "}";
 }
 
+// The canonical big-endian bytes of RDRAM page pg (each host-order word byte-swapped back) into page, and their hash.
+uint64_t canonical(const uint8_t *rdram, uint32_t pg, uint8_t *page) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (uint32_t i = 0; i < PAGE; i += 4) {
+        uint32_t w = __builtin_bswap32(word(rdram, pg * PAGE + i));
+        std::memcpy(page + i, &w, 4);
+    }
+    for (uint32_t i = 0; i < PAGE; i += 8) {
+        uint64_t w;
+        std::memcpy(&w, page + i, 8);
+        h = (h ^ w) * 0x100000001b3ull;
+    }
+    return h;
+}
+
+// N64R_LOCKSTEP_DUMP=POLL:PAGE,PAGE,...: the dump replay. Nothing is recorded; the poll point at POLL writes the named
+// pages and ends the process.
+int open_dump(const std::string &dir, const char *spec) {
+    char *end;
+    const unsigned long long poll = std::strtoull(spec, &end, 10);
+    bool ok = *end == ':' && poll > 0 && ram_bytes;
+    while (ok && *end && *++end) {
+        const char *at = end;
+        const unsigned long pg = std::strtoul(at, &end, 10);
+        ok = end != at && (*end == ',' || !*end) && pg < ram_bytes / PAGE;
+        if (ok) dump_pages.push_back((uint32_t)pg);
+    }
+    if (!ok || dump_pages.empty()) {
+        std::fprintf(stderr, "n64host: lockstep dump off (N64R_LOCKSTEP_DUMP is POLL:PAGE,..., got %s)\n", spec);
+        return 0;
+    }
+    dump_poll = (int64_t)poll;
+    dump_dir = dir + "/dump";
+    return 1;
+}
+
+// The dump at poll dump_poll (lock held): dump/POLL/dump.bin, then the process ends; its exit is the dump's completion.
+void dump(const uint8_t *rdram) {
+    static uint8_t page[PAGE];
+    mkdir(dump_dir.c_str(), 0777);
+    const std::string folder = dump_dir + "/" + std::to_string(dump_poll), part = folder + "/dump.bin.part";
+    mkdir(folder.c_str(), 0777);
+    const int fd = open(part.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666);
+    if (fd < 0) {
+        std::fprintf(stderr, "n64host: lockstep dump cannot write %s\n", part.c_str());
+        std::_Exit(6);
+    }
+    for (uint32_t pg : dump_pages) {
+        const uint64_t h = canonical(rdram, pg, page);
+        uint32_t head[4] = {pg, 0, (uint32_t)h, (uint32_t)(h >> 32)};
+        out(fd, head, sizeof head);
+        out(fd, page, PAGE);
+    }
+    if (close(fd) != 0 || std::rename(part.c_str(), (folder + "/dump.bin").c_str()) != 0) std::_Exit(6);
+    std::fprintf(stderr, "n64host: lockstep dump of %zu pages at poll %lld in %s\n", dump_pages.size(),
+                 (long long)dump_poll, folder.c_str());
+    std::fflush(stderr);
+    std::_Exit(0);
+}
+
 int open_files() {
     const char *dir = std::getenv("N64R_LOCKSTEP_DIR");
     if (!dir || !*dir) return 0;
@@ -128,9 +192,9 @@ int open_files() {
     }
     mkdir(dir, 0777);
     std::string d(dir);
+    if (const char *spec = std::getenv("N64R_LOCKSTEP_DUMP"); spec && *spec) return open_dump(d, spec);
     log_fd = open((d + "/lockstep.jsonl").c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0666);
-    store_fd = open((d + "/pages.bin").c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0666);
-    if (log_fd < 0 || store_fd < 0 || !ram_bytes) {
+    if (log_fd < 0 || !ram_bytes) {
         std::fprintf(stderr, "n64host: lockstep off (cannot write %s)\n", dir);
         return 0;
     }
@@ -146,7 +210,7 @@ int open_files() {
     return 1;
 }
 
-// The changed pages of one stream (lock held) as "[[page,hash],...]": hashed in canonical order, each new one stored.
+// The changed pages of one stream (lock held) as "[[page,hash],...]", hashed in canonical order.
 std::string changed(Pages &s, const uint8_t *rdram) {
     static uint8_t page[PAGE];
     std::string list = "[";
@@ -156,23 +220,9 @@ std::string changed(Pages &s, const uint8_t *rdram) {
         // of RDRAM, so the guest loses no retraces to the recorder.
         if (s.started && std::memcmp(s.shadow.data() + pg * PAGE, rdram + pg * PAGE, PAGE) == 0) continue;
         std::memcpy(s.shadow.data() + pg * PAGE, rdram + pg * PAGE, PAGE);
-        uint64_t h = 0xcbf29ce484222325ull;
-        for (uint32_t i = 0; i < PAGE; i += 4) {
-            uint32_t w = __builtin_bswap32(word(s.shadow.data(), pg * PAGE + i));
-            std::memcpy(page + i, &w, 4);
-        }
-        for (uint32_t i = 0; i < PAGE; i += 8) {
-            uint64_t w;
-            std::memcpy(&w, page + i, 8);
-            h = (h ^ w) * 0x100000001b3ull;
-        }
+        const uint64_t h = canonical(s.shadow.data(), pg, page);
         if (s.started && s.last[pg] == h) continue;
         s.last[pg] = h;
-        if (stored.insert(h).second) {
-            uint32_t head[4] = {pg, 0, (uint32_t)h, (uint32_t)(h >> 32)};
-            out(store_fd, head, sizeof head);
-            out(store_fd, page, PAGE);
-        }
         list += sep;
         list += "[" + std::to_string(pg) + "," + hex64(h) + "]";
         sep = ",";
@@ -205,6 +255,7 @@ int n64host_lockstep_on = open_files();
 
 extern "C" void n64host_lockstep_entry(const char *name, const uint8_t *rdram, uint32_t a0, uint32_t a1, uint32_t a2,
                                        uint32_t a3, uint64_t f12, uint64_t f14, uint32_t sp) {
+    if (dump_poll >= 0) return;  // the dump replay records nothing
     int64_t call = -1;
     {
         std::lock_guard<std::mutex> g(lock);
@@ -231,6 +282,7 @@ extern "C" void n64host_lockstep_entry(const char *name, const uint8_t *rdram, u
 // sp is the restored stack pointer, equal to the one at entry; frames left above it were tail calls or skipped.
 extern "C" void n64host_lockstep_return(const char *name, const uint8_t *rdram, uint32_t v0, uint32_t v1, uint64_t f0,
                                         uint32_t sp) {
+    if (dump_poll >= 0) return;
     while (!frames.empty() && frames.back().sp < sp) frames.pop_back();
     if (frames.empty() || frames.back().sp != sp || frames.back().name != name) return;
     const Frame fr = frames.back();
@@ -249,6 +301,10 @@ extern "C" void n64host_lockstep_return(const char *name, const uint8_t *rdram, 
 extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, const uint8_t *rdram, const uint32_t *pads,
                                       unsigned count) {
     std::lock_guard<std::mutex> g(lock);
+    if (dump_poll >= 0) {  // the dump replay: only the dump poll does anything, and it ends the process
+        if ((int64_t)poll == dump_poll) dump(rdram);
+        return;
+    }
     std::string line = "{\"k\":\"poll\",\"poll\":" + std::to_string(poll) + ",\"vi\":" + std::to_string(vi) + ",\"pad\":[";
     for (unsigned i = 0; i < count; i++) line += (i ? "," : "") + hex32(pads[i]);
     out_line(line + "],\"pages\":" + changed(poll_pages, rdram) + "}\n");
