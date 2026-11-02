@@ -369,7 +369,10 @@ under `N64R_` names and runs with no display server (no X11, no Wayland composit
   registers, the height from the rows the game drew into that colour image (else the VI's estimate).
 - `N64R_LOCKSTEP_DIR`: output directory (created). Receives `lockstep.jsonl`
   (`meta`, then `hit` at the first entry of each function with the 4 KiB pages
-  whose hash changed since the previous hit, `call`/`ret` for its first calls,
+  whose hash changed since the previous hit, `poll` at every controller poll of
+  an `N64R_TAS_PLAY` movie with its poll index, VI count, each controller's pad
+  word (buttons << 16 | x << 8 | y) and the pages changed since the previous
+  poll, `call`/`ret` for its first calls,
   `watch`) and `pages.bin` (each distinct page once: u32 page, u32 0, u64 hash,
   4096 bytes). Pages are hashed and stored in canonical big-endian byte order
   (each RDRAM word byte-swapped back); the hash is FNV-1a over little-endian

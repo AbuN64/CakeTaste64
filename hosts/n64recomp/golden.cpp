@@ -35,6 +35,9 @@
 #include "render_gate.h"
 
 extern uint8_t *n64host_rdram;
+extern "C" int n64host_lockstep_on;
+extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, const uint8_t *rdram, const uint32_t *pads,
+                                      unsigned count);
 void n64host_script_key(const char *name);
 extern "C" void n64host_view_shot(uint64_t poll);
 extern "C" void n64host_view_final();
@@ -285,6 +288,12 @@ extern "C" bool n64host_golden_pad(unsigned channel, uint16_t *buttons, int8_t *
     ++polls;
     if (const char *t = std::getenv("N64R_TAS_TRACE")) { static FILE *tf = std::fopen(t, "w"); if (tf) { std::fprintf(tf, "%llu %llu\n", (unsigned long long)polls, (unsigned long long)vi_count.load()); std::fflush(tf); } }
     n64host_tas_poll = polls;
+    if (n64host_lockstep_on) {  // N64R_LOCKSTEP_DIR: the per-poll lockstep point (lockstep.cpp)
+        uint32_t words[4];
+        for (unsigned i = 0; i < n64host_golden_pads(); i++)
+            words[i] = uint32_t(held[i]) << 16 | uint32_t(uint8_t(held_x[i])) << 8 | uint8_t(held_y[i]);
+        n64host_lockstep_poll(polls, vi_count.load(), n64host_rdram, words, n64host_golden_pads());
+    }
     state_poll(polls);  // TS_CHECKPOINT, the same point the port samples (tas_state.h)
     const bool shot = shot_every && polls % shot_every == 0;
     if (shot && on()) checkpoint("poll-" + std::to_string(polls));

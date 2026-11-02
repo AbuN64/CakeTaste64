@@ -4,6 +4,8 @@
 //     meta  side, ram, page, bytes ("canonical-be"), hash
 //     hit   the first entry of a function: n (point number), fn, thr, vi, sp, pages = [[page, hash], ...] for
 //           every 4 KiB page whose hash changed since the previous point (all pages at the first point)
+//     poll  every controller poll of a TAS movie: poll (the index, from 1), vi, pad = the word each controller
+//           answers (buttons << 16 | x << 8 | y), pages = the pages changed since the previous poll (all at the first)
 //     call  one of the first N64R_LOCKSTEP_CALLS (8) calls that each caller makes of a function, then every call at a power-of-two
 //           ordinal (a ring the port keeps at the same ordinals): i (the function's
 //           running call number), fn, caller (the nearest hooked function on this guest thread's stack, "?" for
@@ -57,10 +59,14 @@ unsigned watch_lines = 0;
 std::unordered_map<const char *, Fn> &fns = *new std::unordered_map<const char *, Fn>;
 // Calls each caller has made of each function, recorded or not: the call's ordinal.
 std::unordered_map<CallerFn, unsigned, CallerFnHash> &ordinals = *new std::unordered_map<CallerFn, unsigned, CallerFnHash>;
-std::vector<uint64_t> &last = *new std::vector<uint64_t>;
-std::vector<uint8_t> &shadow = *new std::vector<uint8_t>;
 std::unordered_set<uint64_t> &stored = *new std::unordered_set<uint64_t>;
 thread_local std::vector<Frame> frames;
+// The pages one stream of points saw last: each stream (function hits, controller polls) lists at a point the 4 KiB
+// pages whose hash changed since its own previous point (every page at its first), so the poll stream reads the same
+// whichever functions the build hooks.
+struct Pages { std::vector<uint64_t> last; std::vector<uint8_t> shadow; bool started = false; };
+Pages &hit_pages = *new Pages;
+Pages &poll_pages = *new Pages;
 
 long tid() { return (long)syscall(SYS_gettid); }
 void out(int fd, const void *data, size_t size) {
@@ -128,8 +134,10 @@ int open_files() {
         std::fprintf(stderr, "n64host: lockstep off (cannot write %s)\n", dir);
         return 0;
     }
-    last.assign(ram_bytes / PAGE, 0);
-    shadow.assign(ram_bytes, 0);
+    for (Pages *s : {&hit_pages, &poll_pages}) {
+        s->last.assign(ram_bytes / PAGE, 0);
+        s->shadow.assign(ram_bytes, 0);
+    }
     char meta[256];
     std::snprintf(meta, sizeof meta, "{\"k\":\"meta\",\"side\":\"oracle\",\"ram\":%u,\"page\":%u,\"bytes\":\"canonical-be\","
                   "\"hash\":\"fnv1a64-le64\",\"calls\":%u,\"ring\":\"pow2\",\"window\":%u,\"watch\":\"%08x\"}\n", ram_bytes, PAGE, max_calls, WINDOW,
@@ -138,21 +146,19 @@ int open_files() {
     return 1;
 }
 
-// One point (lock held): hash every page in canonical order, list and store the changed ones.
-void point(const char *name, const uint8_t *rdram, uint32_t sp) {
+// The changed pages of one stream (lock held) as "[[page,hash],...]": hashed in canonical order, each new one stored.
+std::string changed(Pages &s, const uint8_t *rdram) {
     static uint8_t page[PAGE];
-    std::string line = "{\"k\":\"hit\",\"n\":" + std::to_string(points++) + ",\"fn\":\"" + name + "\",\"thr\":" +
-                       std::to_string(tid()) + ",\"vi\":" + std::to_string(n64host_golden_frame()) + ",\"sp\":" +
-                       hex32(sp) + ",\"pages\":[";
+    std::string list = "[";
     const char *sep = "";
     for (uint32_t pg = 0; pg < ram_bytes / PAGE; pg++) {
         // Only pages whose raw bytes changed since the last point are re-hashed: a point costs about one memcmp
         // of RDRAM, so the guest loses no retraces to the recorder.
-        if (points > 1 && std::memcmp(shadow.data() + pg * PAGE, rdram + pg * PAGE, PAGE) == 0) continue;
-        std::memcpy(shadow.data() + pg * PAGE, rdram + pg * PAGE, PAGE);
+        if (s.started && std::memcmp(s.shadow.data() + pg * PAGE, rdram + pg * PAGE, PAGE) == 0) continue;
+        std::memcpy(s.shadow.data() + pg * PAGE, rdram + pg * PAGE, PAGE);
         uint64_t h = 0xcbf29ce484222325ull;
         for (uint32_t i = 0; i < PAGE; i += 4) {
-            uint32_t w = __builtin_bswap32(word(shadow.data(), pg * PAGE + i));
+            uint32_t w = __builtin_bswap32(word(s.shadow.data(), pg * PAGE + i));
             std::memcpy(page + i, &w, 4);
         }
         for (uint32_t i = 0; i < PAGE; i += 8) {
@@ -160,18 +166,27 @@ void point(const char *name, const uint8_t *rdram, uint32_t sp) {
             std::memcpy(&w, page + i, 8);
             h = (h ^ w) * 0x100000001b3ull;
         }
-        if (points > 1 && last[pg] == h) continue;
-        last[pg] = h;
+        if (s.started && s.last[pg] == h) continue;
+        s.last[pg] = h;
         if (stored.insert(h).second) {
             uint32_t head[4] = {pg, 0, (uint32_t)h, (uint32_t)(h >> 32)};
             out(store_fd, head, sizeof head);
             out(store_fd, page, PAGE);
         }
-        line += sep;
-        line += "[" + std::to_string(pg) + "," + hex64(h) + "]";
+        list += sep;
+        list += "[" + std::to_string(pg) + "," + hex64(h) + "]";
         sep = ",";
     }
-    out_line(line + "]}\n");
+    s.started = true;
+    return list + "]";
+}
+
+// One hit point (lock held).
+void point(const char *name, const uint8_t *rdram, uint32_t sp) {
+    std::string line = "{\"k\":\"hit\",\"n\":" + std::to_string(points++) + ",\"fn\":\"" + name + "\",\"thr\":" +
+                       std::to_string(tid()) + ",\"vi\":" + std::to_string(n64host_golden_frame()) + ",\"sp\":" +
+                       hex32(sp) + ",\"pages\":";
+    out_line(line + changed(hit_pages, rdram) + "}\n");
 }
 
 void watch(const char *name, const uint8_t *rdram, const char *at) {
@@ -226,4 +241,15 @@ extern "C" void n64host_lockstep_return(const char *name, const uint8_t *rdram, 
                  std::to_string(tid()) + ",\"r\":[" + hex32(v0) + "," + hex32(v1) + "],\"f0\":" + hex64(f0) +
                  ",\"m\":" + windows(rdram, fr.a) + "}\n");
     if (watching) watch(name, rdram, "ret");
+}
+
+// One controller poll of a TAS movie (the host's n64host_golden_pad, channel 0's read): a `poll` point keyed by the
+// poll index, with the VI count, the pad word each controller answers this poll (buttons << 16 | stick x << 8 |
+// stick y, as the guest's OSContPad reads it) and the pages changed since the previous poll.
+extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, const uint8_t *rdram, const uint32_t *pads,
+                                      unsigned count) {
+    std::lock_guard<std::mutex> g(lock);
+    std::string line = "{\"k\":\"poll\",\"poll\":" + std::to_string(poll) + ",\"vi\":" + std::to_string(vi) + ",\"pad\":[";
+    for (unsigned i = 0; i < count; i++) line += (i ? "," : "") + hex32(pads[i]);
+    out_line(line + "],\"pages\":" + changed(poll_pages, rdram) + "}\n");
 }

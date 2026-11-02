@@ -36,6 +36,30 @@ int main() {
 }
 """
 
+# A 3-poll movie fixture: two controllers, a hit between polls (the poll stream keeps its own page baseline).
+POLL_DRIVER = r"""
+#include <cstdint>
+#include <cstring>
+extern "C" uint64_t n64host_golden_frame() { return 7; }
+extern "C" int n64host_lockstep_on;
+extern "C" void n64host_lockstep_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t,
+                                       uint64_t, uint64_t, uint32_t);
+extern "C" void n64host_lockstep_poll(uint64_t, uint64_t, const uint8_t *, const uint32_t *, unsigned);
+static uint8_t rdram[0x4000];
+int main() {
+    if (!n64host_lockstep_on) return 3;
+    const uint32_t pads[3][2] = {{0x00000000, 0x80000000}, {0x900050b0, 0x00000000}, {0x0010ff01, 0x00200000}};
+    uint32_t w = 0x11223344;
+    std::memcpy(rdram + 0x2000, &w, 4);
+    n64host_lockstep_poll(1, 2, rdram, pads[0], 2);
+    rdram[0x1000 ^ 3] = 0xAB;                      // changes page 1 before the hit
+    n64host_lockstep_entry("f", rdram, 0, 0, 0, 0, 0, 0, 0x80003f00);
+    n64host_lockstep_poll(2, 4, rdram, pads[1], 2);
+    n64host_lockstep_poll(3, 6, rdram, pads[2], 2);  // nothing changed
+    return 0;
+}
+"""
+
 
 def fnv(data):
     h = 0xCBF29CE484222325
@@ -61,6 +85,10 @@ class LockstepDocsTest(unittest.TestCase):
         self.assertIn("if (n64host_lockstep_on) n64host_lockstep_entry(", probe)
         self.assertIn("if (n64host_lockstep_on) n64host_lockstep_return(", probe)
         self.assertIn("lockstep.cpp", (HOST / "CMakeLists.txt").read_text(encoding="utf-8"))
+        golden = (HOST / "golden.cpp").read_text(encoding="utf-8")
+        self.assertIn("if (n64host_lockstep_on) {", golden)
+        self.assertIn("n64host_lockstep_poll(polls, vi_count.load(), n64host_rdram, words, n64host_golden_pads());",
+                      golden)
 
 
 @unittest.skipUnless(shutil.which("g++"), "needs g++")
@@ -123,3 +151,39 @@ class LockstepRecorderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("g++"), "needs g++")
+class LockstepPollTest(unittest.TestCase):
+    def test_three_polls_record_index_vi_pads_and_changed_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            (path / "driver.cpp").write_text(POLL_DRIVER)
+            exe = path / "driver"
+            subprocess.run(["g++", "-std=c++17", "-O1", "-Wall", "-Werror", str(HOST / "lockstep.cpp"),
+                            str(path / "driver.cpp"), "-o", str(exe), "-lpthread"], check=True, capture_output=True,
+                           text=True)
+            out = path / "ls"
+            env = dict(os.environ, N64R_LOCKSTEP_DIR=str(out), N64R_LOCKSTEP_RAM="0x4000")
+            result = subprocess.run([str(exe)], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            lines = [json.loads(x) for x in (out / "lockstep.jsonl").read_text().splitlines()]
+            polls = [x for x in lines if x["k"] == "poll"]
+            self.assertEqual([(x["poll"], x["vi"]) for x in polls], [(1, 2), (2, 4), (3, 6)])
+            self.assertEqual([x["pad"] for x in polls], [["00000000", "80000000"], ["900050b0", "00000000"],
+                                                         ["0010ff01", "00200000"]])
+            self.assertEqual([p[0] for p in polls[0]["pages"]], [0, 1, 2, 3])
+            # the hit in between saw page 1 change too; the poll stream still lists it against poll 1
+            self.assertEqual([p[0] for p in polls[1]["pages"]], [1])
+            self.assertEqual(polls[2]["pages"], [])
+            hit = next(x for x in lines if x["k"] == "hit")
+            self.assertEqual(len(hit["pages"]), 4)
+            store = (out / "pages.bin").read_bytes()
+            pages = {}
+            for at in range(0, len(store), 16 + 4096):
+                pg, _, h = struct.unpack_from("<IIQ", store, at)
+                pages[h] = (pg, store[at + 16:at + 16 + 4096])
+                self.assertEqual(fnv(pages[h][1]), h)
+            self.assertEqual(pages[int(polls[0]["pages"][2][1], 16)][1][:4], bytes.fromhex("11223344"))
+            self.assertEqual(pages[int(polls[1]["pages"][0][1], 16)], (1, pages[int(polls[1]["pages"][0][1], 16)][1]))
+            self.assertEqual(pages[int(polls[1]["pages"][0][1], 16)][1][:1], b"\xab")
