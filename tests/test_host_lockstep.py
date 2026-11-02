@@ -12,7 +12,8 @@ HOST = Path(__file__).resolve().parents[1] / "hosts" / "n64recomp"
 DRIVER = r"""
 #include <cstdint>
 #include <cstring>
-extern "C" uint64_t n64host_golden_frame() { return 42; }
+extern "C" uint64_t n64host_golden_frame() { return 42; }  // the retrace count: never a call's frame
+extern "C" { volatile unsigned long long n64host_tas_poll = 5; }  // golden.cpp: the polls read so far
 extern "C" int n64host_lockstep_on;
 extern "C" void n64host_lockstep_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t,
                                        uint64_t, uint64_t, uint32_t);
@@ -41,6 +42,7 @@ POLL_DRIVER = r"""
 #include <cstdint>
 #include <cstring>
 extern "C" uint64_t n64host_golden_frame() { return 7; }
+extern "C" { volatile unsigned long long n64host_tas_poll = 0; }
 extern "C" int n64host_lockstep_on;
 extern "C" void n64host_lockstep_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t,
                                        uint64_t, uint64_t, uint32_t);
@@ -51,10 +53,13 @@ int main() {
     const uint32_t pads[3][2] = {{0x00000000, 0x80000000}, {0x900050b0, 0x00000000}, {0x0010ff01, 0x00200000}};
     uint32_t w = 0x11223344;
     std::memcpy(rdram + 0x2000, &w, 4);
+    n64host_tas_poll = 1;                          // golden.cpp sets it before the poll line, as here
     n64host_lockstep_poll(1, 2, rdram, pads[0], 2);
     rdram[0x1000 ^ 3] = 0xAB;                      // changes page 1 before the hit
     n64host_lockstep_entry("f", rdram, 0, 0, 0, 0, 0, 0, 0x80003f00);
+    n64host_tas_poll = 2;
     n64host_lockstep_poll(2, 4, rdram, pads[1], 2);
+    n64host_tas_poll = 3;
     n64host_lockstep_poll(3, 6, rdram, pads[2], 2);  // nothing changed
     return 0;
 }
@@ -128,7 +133,8 @@ class LockstepRecorderTest(unittest.TestCase):
             self.assertEqual([(x["fn"], x["caller"], x["o"]) for x in calls],
                              [("f", "?", 0), ("g", "f", 0), ("h", "g", 0), ("f", "?", 1)] +
                              [("f", "f", o) for o in range(9)])
-            self.assertEqual({x["frame"] for x in calls}, {42})
+            self.assertEqual({x["frame"] for x in calls}, {5})  # the poll index, as the port stamps; not retrace 42
+            self.assertEqual((lines[0]["frame"], lines[0]["calls"]), ("poll", 8))
             self.assertEqual(calls[0]["a"], ["00000001", "00000002", "00000003", "00000004"])
             self.assertEqual(calls[0]["f12"], "3ff8000000000000")
             rets = [x for x in lines if x["k"] == "ret"]
@@ -173,6 +179,8 @@ class LockstepPollTest(unittest.TestCase):
             # the hit in between saw page 1 change too; the poll stream still lists it against poll 1
             self.assertEqual([p[0] for p in polls[1]["pages"]], [1])
             self.assertEqual(polls[2]["pages"], [])
+            # a call between poll lines 1 and 2 falls in poll 1 (the port's reach_poll), not retrace 7
+            self.assertEqual([(x["fn"], x["frame"]) for x in lines if x["k"] == "call"], [("f", 1)])
             hit = next(x for x in lines if x["k"] == "hit")
             self.assertEqual(len(hit["pages"]), 4)
             self.assertEqual(int(polls[0]["pages"][2][1], 16), fnv(bytes.fromhex("11223344") + bytes(4092)))

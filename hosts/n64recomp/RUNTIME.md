@@ -383,7 +383,7 @@ under `N64R_` names and runs with no display server (no X11, no Wayland composit
   canonical bytes; written beside it, then renamed) and the host exits 0, so the
   dump is complete when the process has exited.
 - `N64R_LOCKSTEP_RAM`: RDRAM bytes hashed (default 0x800000).
-- `N64R_LOCKSTEP_CALLS`: calls recorded per caller and function (default 8), then every call at a power-of-two ordinal; each with its caller, ordinal and poll frame, and at its return the 16-word windows its a0..a3 RDRAM pointers name (`m`).
+- `N64R_LOCKSTEP_CALLS`: calls recorded per caller and function (default 8), then every call at a power-of-two ordinal; each with its caller, ordinal and `frame`, the poll index it falls in (`n64host_tas_poll`, the unit the port's calls.jsonl stamps; the meta says `"frame":"poll"`), never the retrace count; decomp hands it the one keep value both sides use (`tas.oracle.lockstep_calls`), and at its return the 16-word windows its a0..a3 RDRAM pointers name (`m`).
 - `N64R_LOCKSTEP_WATCH`: an RDRAM address; every change of that word seen at an
   entry or return is a `watch` line naming the function.
 Returns pair with entries by name and stack pointer; frames left above a return

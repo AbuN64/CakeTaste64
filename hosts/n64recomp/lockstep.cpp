@@ -1,7 +1,8 @@
 // Lockstep recorder for the oracle host: a test instrument only, inert unless N64R_LOCKSTEP_DIR is set.
 // It writes the oracle half of a lockstep comparison against a native port (the port's own tool compares):
 //   lockstep.jsonl  one JSON object per line:
-//     meta  side, ram, page, bytes ("canonical-be"), hash
+//     meta  side, ram, page, bytes ("canonical-be"), hash, calls (the calls kept per caller and function), frame
+//           ("poll": a call's frame is the poll index, the unit the port's calls.jsonl stamps)
 //     hit   the first entry of a function: n (point number), fn, thr, vi, sp, pages = [[page, hash], ...] for
 //           every 4 KiB page whose hash changed since the previous point (all pages at the first point)
 //     poll  every controller poll of a TAS movie: poll (the index, from 1), vi, pad = the word each controller
@@ -9,7 +10,8 @@
 //     call  one of the first N64R_LOCKSTEP_CALLS (8) calls that each caller makes of a function, then every call at a power-of-two
 //           ordinal (a ring the port keeps at the same ordinals): i (the function's
 //           running call number), fn, caller (the nearest hooked function on this guest thread's stack, "?" for
-//           none), o (the ordinal among that caller's calls of fn, every call counted), frame (the VI/poll), thr,
+//           none), o (the ordinal among that caller's calls of fn, every call counted), frame (the poll index this
+//           call falls in: the polls read so far, the port's reach_poll; never the retrace count), thr,
 //           a = a0..a3, f12, f14 (raw 64-bit), sp. The port writes the same keys (shim/boot/trace.c), so the two
 //           sides align call by call whatever phase their polls are in.
 //     ret   that call's return: fn, i, r = v0, v1, f0 (raw 64-bit), m = the 16-word windows the argument registers
@@ -38,6 +40,7 @@
 #include <unistd.h>
 
 extern "C" uint64_t n64host_golden_frame();
+extern "C" volatile unsigned long long n64host_tas_poll;  // golden.cpp: the polls the guest has read
 
 namespace {
 constexpr uint32_t PAGE = 4096;
@@ -204,7 +207,7 @@ int open_files() {
     }
     char meta[256];
     std::snprintf(meta, sizeof meta, "{\"k\":\"meta\",\"side\":\"oracle\",\"ram\":%u,\"page\":%u,\"bytes\":\"canonical-be\","
-                  "\"hash\":\"fnv1a64-le64\",\"calls\":%u,\"ring\":\"pow2\",\"window\":%u,\"watch\":\"%08x\"}\n", ram_bytes, PAGE, max_calls, WINDOW,
+                  "\"hash\":\"fnv1a64-le64\",\"calls\":%u,\"frame\":\"poll\",\"ring\":\"pow2\",\"window\":%u,\"watch\":\"%08x\"}\n", ram_bytes, PAGE, max_calls, WINDOW,
                   watching ? 0x80000000u + watch_phys : 0u);
     out(log_fd, meta, std::strlen(meta));
     return 1;
@@ -271,7 +274,7 @@ extern "C" void n64host_lockstep_entry(const char *name, const uint8_t *rdram, u
         if (call >= 0)
             out_line("{\"k\":\"call\",\"fn\":\"" + std::string(name) + "\",\"i\":" + std::to_string(call) +
                      ",\"caller\":\"" + (caller ? caller : "?") + "\",\"o\":" + std::to_string(ordinal) +
-                     ",\"frame\":" + std::to_string(n64host_golden_frame()) + ",\"thr\":" +
+                     ",\"frame\":" + std::to_string(n64host_tas_poll) + ",\"thr\":" +
                      std::to_string(tid()) + ",\"sp\":" + hex32(sp) + ",\"a\":[" + hex32(a0) + "," + hex32(a1) + "," +
                      hex32(a2) + "," + hex32(a3) + "],\"f12\":" + hex64(f12) + ",\"f14\":" + hex64(f14) + "}\n");
         if (watching) watch(name, rdram, "enter");
