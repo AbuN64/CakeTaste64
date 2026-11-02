@@ -599,7 +599,7 @@ class SelfcheckScript(unittest.TestCase):
     )
 
     def run_selfcheck(self, addrs):
-        """(code, stdout, stderr, the spec the host was given) of selfcheck on a build whose symbol_addrs.txt is addrs."""
+        """(code, stdout, stderr, the spec the host was given) of selfcheck on a build with symbol_addrs.txt addrs."""
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp, "home")
             rom = home / "code/ragewars-decomp/roms/baserom.us-rev1.z64"
@@ -610,11 +610,15 @@ class SelfcheckScript(unittest.TestCase):
             if addrs is not None:
                 (build / "gen/symbol_addrs.txt").write_text(addrs)
             seen = Path(tmp, "spec.seen")
-            (build / "n64host").write_text(f'#!/bin/sh\ncp "$N64R_TAS_STATE" {seen}\ncp "$N64R_TAS_STATE" "$N64R_TAS_STATE_HASH"\n')
+            (build / "n64host").write_text(
+                f'#!/bin/sh\ncp "$N64R_TAS_STATE" {seen}\ncp "$N64R_TAS_STATE" "$N64R_TAS_STATE_HASH"\n'
+            )
             (build / "n64host").chmod(0o755)
             body = deploy_rig.SELFCHECK + f'selfcheck "{build}/n64host"\n'
             env = {**os.environ, "HOME": str(home), "TMPDIR": tmp}
-            done = subprocess.run(["bash", "-c", "set -eu\n" + body], capture_output=True, text=True, check=False, env=env)
+            done = subprocess.run(
+                ["bash", "-c", "set -eu\n" + body], capture_output=True, text=True, check=False, env=env
+            )
             return done.returncode, done.stdout, done.stderr, seen.read_text() if seen.exists() else None
 
     def test_the_spec_is_derived_from_the_symbols_of_the_build_checked(self):
