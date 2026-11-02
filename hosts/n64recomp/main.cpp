@@ -31,6 +31,7 @@ extern "C" uint64_t n64host_golden_frame();
 extern "C" void n64host_golden_entry(const char *, unsigned);
 extern "C" void n64host_golden_audio(uint32_t, uint32_t, uint32_t);
 extern "C" void n64host_view_vi();
+extern "C" uint64_t n64host_vclock_ns();
 extern "C" void n64host_trace(const char *name, int charged) {
     n64host_cpu_tick(charged);
     n64host_golden_entry(name, (unsigned)SDL_GetThreadID(nullptr));
@@ -39,7 +40,8 @@ extern "C" void n64host_trace(const char *name, int charged) {
     static std::atomic<unsigned> frame{0};
     static std::mutex m;
     std::lock_guard<std::mutex> g(m);
-    std::fprintf(f, "%u %u %s\n", (unsigned)n64host_golden_frame(), (unsigned)SDL_GetThreadID(nullptr), name);
+    std::fprintf(f, "%u %u %s %llu\n", (unsigned)n64host_golden_frame(), (unsigned)SDL_GetThreadID(nullptr), name,
+                 (unsigned long long)n64host_vclock_ns());
 }
 extern "C" void n64host_addrmap_init(void);
 extern "C" void n64host_memwatch(unsigned, unsigned, int) {}
