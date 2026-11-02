@@ -71,15 +71,19 @@ HASH = re.compile(r"readback-hash: ([0-9a-f]{16})")
 Bash = Callable[..., "tuple[int, str]"]
 
 # selfcheck HOST: boot-idle twice through the oracle binary HOST, one `readback-hash: <first-16-hex>` line per run (env
-# as tas_oracle.start); the job fails when the two state hashes differ.
+# as tas_oracle.start); the job fails when the two state hashes differ. The state spec (tas_state.h) is derived from the
+# build checked: one word per RDRAM symbol of the symbol_addrs.txt kept in HOST's gen dir, so no spec outside the build
+# is needed and a build without that file, or without such a symbol, refuses.
 SELFCHECK = r"""selfcheck() {
   host=$1
-  spec=$HOME/rig-state/tas/runs/state-spec/b1d54eea5d7361537883/oracle.spec
-  for need in "$host" "$spec" "$HOME/code/ragewars-decomp/roms/baserom.us-rev1.z64"; do
+  addrs=$(dirname "$host")/gen/symbol_addrs.txt
+  for need in "$host" "$addrs" "$HOME/code/ragewars-decomp/roms/baserom.us-rev1.z64"; do
     test -e "$need" || { echo "selfcheck: $need is missing" >&2; exit 1; }
   done
   work=$(mktemp -d)
-  # idle movie: play dirs get pruned
+  spec=$work/oracle.spec
+  sed -En -e '1i ram 800000\nregion ALL' -e 's/^(\S+) = 0x(80[0-7][0-9A-Fa-f]{4}[048cC]);.*/symbol \1\nrun \2 w 1/p' "$addrs" > "$spec"
+  grep -q ^symbol "$spec" || { echo "selfcheck: $addrs has no RDRAM symbol" >&2; exit 1; }
   movie=$work/movie.raw
   yes '0000 0 0' | head -n 600 > "$movie"
   first=
@@ -88,16 +92,9 @@ SELFCHECK = r"""selfcheck() {
     mkdir "$out"
     (
       cd "$out"
-      export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
-      export N64R_ROM=$HOME/code/ragewars-decomp/roms/baserom.us-rev1.z64 N64R_CONFIG=$HOME/rig-state/tas/oracle/cfg
-      export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json
-      export N64R_PAK=on N64R_PADS=1 N64R_TAS_PLAY=$movie N64R_TAS_EXIT_AFTER=300 N64R_VIEW=$out/view.bmp
-      export N64R_AUDIO_OUT=/dev/null N64R_TAS_SHOT_EVERY=0 N64R_TAS_TRACE=$out/oracle-trace.txt
-      export N64R_TAS_STATE=$spec N64R_TAS_STATE_HASH=$out/state-oracle.txt
+      export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy N64R_ROM=$HOME/code/ragewars-decomp/roms/baserom.us-rev1.z64 N64R_CONFIG=$HOME/rig-state/tas/oracle/cfg VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json N64R_PAK=on N64R_PADS=1 N64R_TAS_PLAY=$movie N64R_TAS_EXIT_AFTER=300 N64R_VIEW=$out/view.bmp N64R_AUDIO_OUT=/dev/null N64R_TAS_SHOT_EVERY=0 N64R_TAS_TRACE=$out/oracle-trace.txt N64R_TAS_STATE=$spec N64R_TAS_STATE_HASH=$out/state-oracle.txt
       unset N64R_CPAK
-      rc=0
-      "$host" > oracle.txt 2>&1 || rc=$?
-      test "$rc" = 0 || { tail -n 5 oracle.txt >&2; echo "boot-idle run $n exit $rc" >&2; exit 1; }
+      "$host" > oracle.txt 2>&1 || { rc=$?; tail -n 5 oracle.txt >&2; echo "boot-idle run $n exit $rc" >&2; exit 1; }
     ) || exit 1
     hash=$(sha256sum "$out/state-oracle.txt" | cut -c1-16)
     echo "readback-hash: $hash"
@@ -126,9 +123,7 @@ trap 'rc=$?; test "$rc" = 0 || rm -rf "$BUILD"' EXIT
 mkdir "$BUILD/deps"
 cp -a "$HOME/src/oracle-deps/N64ModernRuntime" "$HOME/src/oracle-deps/rt64" "$HOME/src/N64Recomp" "$BUILD/deps/"
 rm -rf "$BUILD/deps/N64Recomp/build"
-git -C "$BUILD/deps/N64Recomp" reset -q --hard
-git -C "$BUILD/deps/N64ModernRuntime" reset -q --hard
-git -C "$BUILD/deps/rt64" reset -q --hard
+for dep in N64Recomp N64ModernRuntime rt64; do git -C "$BUILD/deps/$dep" reset -q --hard; done
 sh hosts/n64recomp/deps.sh "$BUILD/deps"
 sh hosts/n64recomp/recompile.sh "$BUILD" "$src" __RAGEWARS__ __RAGEWARS_LOCAL__ \
   __RECOMP_PROFILE__ __VERSION__

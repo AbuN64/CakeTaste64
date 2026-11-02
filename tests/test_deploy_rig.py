@@ -587,6 +587,58 @@ class Steps(unittest.TestCase):
             self.assertEqual((code, needle in err), (1, True), (answer, err))
 
 
+class SelfcheckScript(unittest.TestCase):
+    """The SELFCHECK function run for real against a temp build: its state spec comes from the build's own gen dir."""
+
+    ADDRS = (
+        "D_95A8 = 0x000095A8; //\n"
+        "g_tlbMissExceptionVector = 0x80000000; //\n"
+        "s_selectTeamText = 0x800C7350; // rom:0xC7F50\n"
+        "g_unaligned = 0x800C7351; //\n"
+        "g_beyondRam = 0x80800000; //\n"
+    )
+
+    def run_selfcheck(self, addrs):
+        """(code, stdout, stderr, the spec the host was given) of selfcheck on a build whose symbol_addrs.txt is addrs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp, "home")
+            rom = home / "code/ragewars-decomp/roms/baserom.us-rev1.z64"
+            rom.parent.mkdir(parents=True)
+            rom.write_bytes(b"rom")
+            build = Path(tmp, "oracle.abc")
+            (build / "gen").mkdir(parents=True)
+            if addrs is not None:
+                (build / "gen/symbol_addrs.txt").write_text(addrs)
+            seen = Path(tmp, "spec.seen")
+            (build / "n64host").write_text(f'#!/bin/sh\ncp "$N64R_TAS_STATE" {seen}\ncp "$N64R_TAS_STATE" "$N64R_TAS_STATE_HASH"\n')
+            (build / "n64host").chmod(0o755)
+            body = deploy_rig.SELFCHECK + f'selfcheck "{build}/n64host"\n'
+            env = {**os.environ, "HOME": str(home), "TMPDIR": tmp}
+            done = subprocess.run(["bash", "-c", "set -eu\n" + body], capture_output=True, text=True, check=False, env=env)
+            return done.returncode, done.stdout, done.stderr, seen.read_text() if seen.exists() else None
+
+    def test_the_spec_is_derived_from_the_symbols_of_the_build_checked(self):
+        code, out, err, spec = self.run_selfcheck(self.ADDRS)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(spec, "ram 800000\nregion ALL\nsymbol g_tlbMissExceptionVector\nrun 80000000 w 1\n"
+                               "symbol s_selectTeamText\nrun 800C7350 w 1\n")
+        self.assertEqual(len(out.split()), 4)  # "readback-hash: <h>" twice
+        self.assertEqual(len(set(out.split())), 2)
+        self.assertNotIn("state-spec", deploy_rig.SELFCHECK)
+
+    def test_a_build_without_its_symbol_addrs_is_refused_naming_the_file(self):
+        code, _, err, spec = self.run_selfcheck(None)
+        self.assertEqual(code, 1)
+        self.assertIn("gen/symbol_addrs.txt is missing", err)
+        self.assertIsNone(spec)
+
+    def test_a_build_whose_symbol_addrs_name_no_ram_symbol_is_refused(self):
+        code, _, err, spec = self.run_selfcheck("D_95A8 = 0x000095A8; //\n")
+        self.assertEqual(code, 1)
+        self.assertIn("has no RDRAM symbol", err)
+        self.assertIsNone(spec)
+
+
 class LiveLinkScript(unittest.TestCase):
     """The LIVE script run for real against a temp toolkit link: what the rig reads when the link is bad."""
 
