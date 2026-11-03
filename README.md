@@ -10,7 +10,7 @@ Python 3.13 or newer, in its own virtual environment.
 
 ```sh
 python3.13 -m venv ~/.venvs/taste && . ~/.venvs/taste/bin/activate
-pip install git+https://github.com/AbuN64/cake-taste-64
+pip install git+https://github.com/AbuN64/cache-64 git+https://github.com/AbuN64/cake-taste-64
 ```
 
 The recompiled oracle also needs the MIPS binutils and N64Recomp at its pin, built beside a cake-taste-64 checkout:
@@ -49,7 +49,7 @@ Profiles, commands and the stream are in [docs/usage.md](docs/usage.md).
 ## Development
 
 ```sh
-sh ci/check   # builds .venv/ci-<pyproject hash> from '.[dev]', then runs ruff and the unittest suite from it
+sh ci/check   # prepares the private .venv from current source revisions, then runs lint and tests
 ```
 
 ## License
@@ -63,3 +63,12 @@ Oracle entry capture accepts `taste repro capture --condition EXPR`. The GDB exp
 AbuCache64 owns every cache, content store, worker slot, pool, executor and timing path (abucache.compile, store,
 slots, pool, stages). `ci/abucache-audit`, run by the check entry point, refuses a new one here naming that owner; the
 files it still lists move to abucache and leave the list, nothing joins it.
+
+Stage duration results use `abucache.stages.timed()` and its `Timing.seconds` observation (seconds, including running work).
+This requires AbuCache64 with the duration observation API introduced at `43bb0be`; first-party dependencies resolve
+their landed main revision rather than retaining a consumer commit pin. Deadline and heartbeat clocks retain their scheduling role.
+
+The CI environment is private to the checkout. `ci/ensure_venv.py` resolves the source names declared in
+`tool.bootstrap.sources` to their landed revisions before installing dependencies. Its reuse key includes
+`pyproject.toml` and every resolved requirement; a new AbuCache64 revision forces a fresh environment.
+Bootstrap uses the standard library and does not import or borrow the installed toolkit.

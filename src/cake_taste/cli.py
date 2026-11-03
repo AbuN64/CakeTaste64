@@ -6,12 +6,13 @@ import argparse
 import importlib
 import json
 import sys
-import time
 import traceback
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+
+from abucache import stages as cache_stages
 
 from cake_taste import TasteError
 from cake_taste.config import Profile, load_profile
@@ -50,39 +51,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--profile", type=Path, help="explicit project JSON profile")
     parser.add_argument("command", choices=("profile", *DOMAINS))
     parser.add_argument("args", nargs=argparse.REMAINDER)
-    started = time.monotonic()
-    invocation = uuid.uuid4().hex
-    result: dict[str, Any] | None = None
-    findings: list[dict[str, Any]] = []
-    code = 0
-    command = "parse"
-    try:
-        parsed = parser.parse_args(args)
-        command = parsed.command
-        if command == "profile":
-            if parsed.args:
-                raise TasteError("cli.arguments", "profile takes no extra arguments")
-            result = _profile(parsed.profile).describe()
-        else:
-            result = _domain(command, _profile(parsed.profile), parsed.args)
-    except TasteError as exc:
-        code, findings = 1, [exc.finding()]
-    except (ValueError, OSError) as exc:
-        code, findings = 1, [{"key": "command.failed", "message": str(exc), "blocking": True}]
-    except SystemExit as exc:
-        # argparse help is the sole plain-text stdout path.
-        if exc.code == 0:
-            return 0
-        code, findings = 2, [{"key": "cli.arguments", "message": f"{command} rejected its arguments", "blocking": True}]
-    except Exception as exc:
-        sys.stderr.write(traceback.format_exc())
-        code, findings = 3, [{"key": "internal.error", "message": repr(exc), "blocking": True}]
-    envelope = {
-        "ok": code == 0,
-        "result": result,
-        "findings": findings,
-        "stages": [{"name": command, "wall_seconds": round(time.monotonic() - started, 6)}],
-        "invocation": invocation,
-    }
-    sys.stdout.write(json.dumps(envelope, sort_keys=True, default=str) + "\n")
-    return code
+    with cache_stages.timed("cake_taste.cli.main.started") as started:
+        invocation = uuid.uuid4().hex
+        result: dict[str, Any] | None = None
+        findings: list[dict[str, Any]] = []
+        code = 0
+        command = "parse"
+        try:
+            parsed = parser.parse_args(args)
+            command = parsed.command
+            if command == "profile":
+                if parsed.args:
+                    raise TasteError("cli.arguments", "profile takes no extra arguments")
+                result = _profile(parsed.profile).describe()
+            else:
+                result = _domain(command, _profile(parsed.profile), parsed.args)
+        except TasteError as exc:
+            code, findings = 1, [exc.finding()]
+        except (ValueError, OSError) as exc:
+            code, findings = 1, [{"key": "command.failed", "message": str(exc), "blocking": True}]
+        except SystemExit as exc:
+            # argparse help is the sole plain-text stdout path.
+            if exc.code == 0:
+                return 0
+            code, findings = (
+                2,
+                [{"key": "cli.arguments", "message": f"{command} rejected its arguments", "blocking": True}],
+            )
+        except Exception as exc:
+            sys.stderr.write(traceback.format_exc())
+            code, findings = 3, [{"key": "internal.error", "message": repr(exc), "blocking": True}]
+        envelope = {
+            "ok": code == 0,
+            "result": result,
+            "findings": findings,
+            "stages": [{"name": command, "wall_seconds": round(started.seconds, 6)}],
+            "invocation": invocation,
+        }
+        sys.stdout.write(json.dumps(envelope, sort_keys=True, default=str) + "\n")
+        return code

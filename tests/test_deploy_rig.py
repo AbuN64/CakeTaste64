@@ -121,8 +121,8 @@ class Shape(unittest.TestCase):
         for taken in ("decomp", "unbake", "unbake-run"):
             self.assertNotIn(taken, deploy_rig.PUBLISHED)
         gate = (ROOT / "ci/check").read_text()
-        self.assertIn('\n"$venv/bin/python" -m ruff check src tests\n', gate)
-        self.assertIn("pip install -q -e '.[dev]'", gate)
+        self.assertIn('\n"$py" -m ruff check src tests ci/ensure_venv.py\n', gate)
+        self.assertIn('py="$(python3 ci/ensure_venv.py)"', gate)
         self.assertNotIn("\nruff ", gate)
 
     def test_the_build_resets_the_copied_deps_and_removes_a_failed_build_folder(self):

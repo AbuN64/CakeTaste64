@@ -9,7 +9,7 @@ description = "Bounded N64 experiments and native-output evidence"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["abucache"]
 
 [project.optional-dependencies]
 dev = ["ruff==0.16.9"]
@@ -31,3 +31,6 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.setuptools.package-data]
 "cake_taste.catalog" = ["page.html"]
 "cake_taste.logs" = ["event.schema.json"]
+
+[tool.bootstrap.sources]
+abucache = "https://github.com/AbuN64/cache-64"

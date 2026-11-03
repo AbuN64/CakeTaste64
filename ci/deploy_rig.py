@@ -272,10 +272,11 @@ class Result(unittest.TextTestResult):
         super().addUnexpectedSuccess(test)
 
 
-start = time.monotonic()
-runner = unittest.TextTestRunner(stream=sys.stdout, resultclass=Result)
-result = runner.run(unittest.defaultTestLoader.discover("tests"))
-seconds = time.monotonic() - start
+from abucache import stages
+with stages.timed("ci.suite") as elapsed:
+    runner = unittest.TextTestRunner(stream=sys.stdout, resultclass=Result)
+    result = runner.run(unittest.defaultTestLoader.discover("tests"))
+seconds = elapsed.seconds
 outside = [path for path in imported() if not inside(path)]
 if outside:
     emit("suite-import: " + outside[0])
@@ -340,8 +341,6 @@ shift 2
     + r"""PY
 """
 )
-
-
 
 
 class Refused(Exception):

@@ -9,10 +9,11 @@ import re
 import select
 import subprocess
 import sys
-import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+from abucache import stages as cache_stages
 
 from cake_taste import TasteError
 from cake_taste.files import sha256_file
@@ -94,54 +95,54 @@ def execute(request: Path) -> None:
     pid = int(Path(config["pid_file"]).read_text())
     fd = os.pidfd_open(pid)
     log = Path(config["log_template"].format(pid=pid))
-    started = time.monotonic()
-    env = {**os.environ, **config.get("env", {})}
-    values = {"role": spec["role"], "scenario": data["name"]}
-    with (root / "trace.jsonl").open("w", buffering=1) as trace:
+    with cache_stages.timed("cake_taste.repro.scenario.execute.started") as started:
+        env = {**os.environ, **config.get("env", {})}
+        values = {"role": spec["role"], "scenario": data["name"]}
+        with (root / "trace.jsonl").open("w", buffering=1) as trace:
 
-        def record(event: dict[str, Any]) -> None:
-            line = json.dumps({"elapsed": time.monotonic() - started, "pid": pid, **event})
-            trace.write(line + "\n")
-            print(line, flush=True)
+            def record(event: dict[str, Any]) -> None:
+                line = json.dumps({"elapsed": started.seconds, "pid": pid, **event})
+                trace.write(line + "\n")
+                print(line, flush=True)
 
-        record({"event": "start", "facts_sha256": data["facts_sha256"]})
-        try:
-            for step in steps:
-                if select.select([fd], [], [], max(0, step["at"] - (time.monotonic() - started)))[0]:
-                    raise RuntimeError("oracle process exited during scenario")
-                if "keys" in step:
-                    command = expand(config["send_command"], values) + step["keys"]
-                    subprocess.run(command, env=env, check=True, capture_output=True, text=True, timeout=10)
-                    record({"event": "input", "keys": step["keys"]})
-                if "checkpoint" in step:
-                    output = root / (step["checkpoint"] + ".png")
-                    current = {**values, "output": str(output), "message": step.get("message", step["checkpoint"])}
-                    subprocess.run(expand(config["capture_command"], current), env=env, check=True, timeout=10)
-                    record(
-                        {
-                            "event": "checkpoint",
-                            "name": step["checkpoint"],
-                            "image_sha256": sha256_file(output),
-                            "message": current["message"],
-                        }
-                    )
-                    subprocess.run(
-                        expand(config["narrate_command"], current),
-                        env=env,
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-            if select.select([fd], [], [], 0)[0]:
-                raise RuntimeError("oracle exited at final checkpoint")
-            record({"event": "complete"})
-        except Exception as exc:
-            record({"event": "failed", "error": str(exc)})
-            raise
-        finally:
-            os.close(fd)
-            (root / "host.log").write_text(log.read_text() if log.exists() else "host log missing\n")
+            record({"event": "start", "facts_sha256": data["facts_sha256"]})
+            try:
+                for step in steps:
+                    if select.select([fd], [], [], max(0, step["at"] - (started.seconds)))[0]:
+                        raise RuntimeError("oracle process exited during scenario")
+                    if "keys" in step:
+                        command = expand(config["send_command"], values) + step["keys"]
+                        subprocess.run(command, env=env, check=True, capture_output=True, text=True, timeout=10)
+                        record({"event": "input", "keys": step["keys"]})
+                    if "checkpoint" in step:
+                        output = root / (step["checkpoint"] + ".png")
+                        current = {**values, "output": str(output), "message": step.get("message", step["checkpoint"])}
+                        subprocess.run(expand(config["capture_command"], current), env=env, check=True, timeout=10)
+                        record(
+                            {
+                                "event": "checkpoint",
+                                "name": step["checkpoint"],
+                                "image_sha256": sha256_file(output),
+                                "message": current["message"],
+                            }
+                        )
+                        subprocess.run(
+                            expand(config["narrate_command"], current),
+                            env=env,
+                            check=True,
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                        )
+                if select.select([fd], [], [], 0)[0]:
+                    raise RuntimeError("oracle exited at final checkpoint")
+                record({"event": "complete"})
+            except Exception as exc:
+                record({"event": "failed", "error": str(exc)})
+                raise
+            finally:
+                os.close(fd)
+                (root / "host.log").write_text(log.read_text() if log.exists() else "host log missing\n")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+import abucache
+from abucache import stages as cache_stages
+
 from cake_taste import TasteError
 from cake_taste.files import atomic_bytes, atomic_json, sha256_file
 from cake_taste.recomp.settings import load as load_recomp
@@ -49,8 +52,20 @@ _RAM_BASE = 0x80000000
 _MAX_WRITES = 16384  # words a recorded call may have written; a call that wrote more is kept without its writes
 _MAX_CALLS = 4096
 _TIMEOUT = 124  # what `timeout` exits with when it stopped the run
-_KNOWN = {"facts", "host", "work_root", "gdb", "env", "timeout_seconds", "trace_seconds", "jobs", "host_inputs",
-          "host_build", "display_command", "batch_seconds"}
+_KNOWN = {
+    "facts",
+    "host",
+    "work_root",
+    "gdb",
+    "env",
+    "timeout_seconds",
+    "trace_seconds",
+    "jobs",
+    "host_inputs",
+    "host_build",
+    "display_command",
+    "batch_seconds",
+}
 
 
 def _config(profile: Any) -> dict[str, Any]:
@@ -70,13 +85,26 @@ def _config(profile: Any) -> dict[str, Any]:
 
 
 def gdb_config(
-    symbol: str, hit: int, rdram_size: int, out: Path, stubs: list[str], trace_seconds: int = 30,
+    symbol: str,
+    hit: int,
+    rdram_size: int,
+    out: Path,
+    stubs: list[str],
+    trace_seconds: int = 30,
     condition: str | None = None,
 ) -> dict[str, Any]:
     """The config of the gdb script (gdb_capture.py): where to stop, what to dump, which callees to record."""
-    return {"symbol": symbol, "hit": hit, "rdram_size": rdram_size, "out": str(out), "stubs": stubs,
-            "max_writes": _MAX_WRITES, "max_calls": _MAX_CALLS,
-            "trace_seconds": trace_seconds, "condition": condition}
+    return {
+        "symbol": symbol,
+        "hit": hit,
+        "rdram_size": rdram_size,
+        "out": str(out),
+        "stubs": stubs,
+        "max_writes": _MAX_WRITES,
+        "max_calls": _MAX_CALLS,
+        "trace_seconds": trace_seconds,
+        "condition": condition,
+    }
 
 
 def parse_context(raw: bytes) -> dict[str, int]:
@@ -87,13 +115,35 @@ def parse_context(raw: bytes) -> dict[str, int]:
     return {**{f"r{i}": words[i] for i in range(1, 32)}, **{f"f{i}": words[32 + i] for i in range(32)}}
 
 
-def _key(rom_sha1: str, function: str, vram: int, hit: int, rdram_size: int, host_sha256: str,
-         stubs: list[str], inputs: str = "", script: str = "", env: dict[str, str] | None = None) -> str:
+def _key(
+    rom_sha1: str,
+    function: str,
+    vram: int,
+    hit: int,
+    rdram_size: int,
+    host_sha256: str,
+    stubs: list[str],
+    inputs: str = "",
+    script: str = "",
+    env: dict[str, str] | None = None,
+) -> str:
     # the calls recorded depend on which callees are stubs (a call inside a stub is not the probe's call), and the
     # oracle is not deterministic: every stub set is its own capture, memory and calls from one run. The inputs the
     # host was built from, the gdb script and the run environment (an input script, a display) change what is seen.
-    text = json.dumps([rom_sha1, function, vram, hit, rdram_size, host_sha256, *([stubs] if stubs else []),
-                       inputs, script, sorted((env or {}).items())])
+    text = json.dumps(
+        [
+            rom_sha1,
+            function,
+            vram,
+            hit,
+            rdram_size,
+            host_sha256,
+            *([stubs] if stubs else []),
+            inputs,
+            script,
+            sorted((env or {}).items()),
+        ]
+    )
     return hashlib.sha256(text.encode()).hexdigest()[:24]
 
 
@@ -116,10 +166,15 @@ def host_inputs(profile: Any, config: dict[str, Any], settings: Any, version: st
     every generated file), the facts file, and the profile's extra `host_inputs` (host sources, pins)."""
     manifest = settings.out(version) / "MANIFEST.json"
     if not manifest.is_file():
-        raise TasteError("repro.capture.stale_host",
-                         f"{manifest} is absent: the recompiled output has no manifest to check the host against")
-    paths = [manifest, profile.resolve_path(config["facts"]),
-             *(profile.resolve_path(p) for p in config.get("host_inputs", []))]
+        raise TasteError(
+            "repro.capture.stale_host",
+            f"{manifest} is absent: the recompiled output has no manifest to check the host against",
+        )
+    paths = [
+        manifest,
+        profile.resolve_path(config["facts"]),
+        *(profile.resolve_path(p) for p in config.get("host_inputs", [])),
+    ]
     return {str(p): _tree_digest(p) for p in paths}
 
 
@@ -167,20 +222,38 @@ def ensure_host(profile: Any, config: dict[str, Any], settings: Any, version: st
                 seconds = int(build.get("timeout_seconds", 1800))
                 with log.open("w") as out:
                     try:
-                        code = subprocess.run([str(c) for c in build["command"]], stdout=out, stderr=subprocess.STDOUT,
-                                              timeout=seconds, check=False).returncode
+                        code = subprocess.run(
+                            [str(c) for c in build["command"]],
+                            stdout=out,
+                            stderr=subprocess.STDOUT,
+                            timeout=seconds,
+                            check=False,
+                        ).returncode
                     except (OSError, subprocess.TimeoutExpired) as exc:
                         code = -1
                         out.write(f"\n{exc}\n")
                 if code != 0:
-                    raise TasteError("repro.capture.host_build",
-                                     f"the host was stale ({why}) and its build failed (exit {code}); log: {log}")
+                    raise TasteError(
+                        "repro.capture.host_build",
+                        f"the host was stale ({why}) and its build failed (exit {code}); log: {log}",
+                    )
                 after = host_inputs(profile, config, settings, version)
                 if after != inputs or not host.is_file():
-                    raise TasteError("repro.capture.stale_host",
-                                     f"the inputs of {host} changed while it was built; run the capture again")
-                atomic_json(stamp, {"host": str(host), "host_sha256": sha256_file(host), "inputs": after,
-                                    "built_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "why": why}, sort_keys=True)
+                    raise TasteError(
+                        "repro.capture.stale_host",
+                        f"the inputs of {host} changed while it was built; run the capture again",
+                    )
+                atomic_json(
+                    stamp,
+                    {
+                        "host": str(host),
+                        "host_sha256": sha256_file(host),
+                        "inputs": after,
+                        "built_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                        "why": why,
+                    },
+                    sort_keys=True,
+                )
                 built = True
             inputs = host_inputs(profile, config, settings, version)
     digest = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
@@ -193,8 +266,11 @@ def _display(profile: Any, config: dict[str, Any], env: dict[str, str]) -> None:
     display it was not given. Without one the host runs headless (SDL_VIDEODRIVER=offscreen: no window, RT64 on a
     Vulkan headless surface), which needs no display at all. X11 is never used."""
     if env.get("DISPLAY"):
-        raise TasteError("repro.capture.display", "repro.capture.env names an X11 DISPLAY; the oracle runs headless "
-                         "(SDL_VIDEODRIVER=offscreen) or on Wayland, never X11")
+        raise TasteError(
+            "repro.capture.display",
+            "repro.capture.env names an X11 DISPLAY; the oracle runs headless "
+            "(SDL_VIDEODRIVER=offscreen) or on Wayland, never X11",
+        )
     if "WAYLAND_DISPLAY" in env and "XDG_RUNTIME_DIR" in env:
         socket = Path(env["XDG_RUNTIME_DIR"]) / env["WAYLAND_DISPLAY"]
     else:
@@ -203,8 +279,11 @@ def _display(profile: Any, config: dict[str, Any], env: dict[str, str]) -> None:
         return
     command = config.get("display_command")
     if not command:
-        raise TasteError("repro.capture.display", f"the capture display {socket} is not running and the profile "
-                         "names no repro.capture.display_command to start it")
+        raise TasteError(
+            "repro.capture.display",
+            f"the capture display {socket} is not running and the profile "
+            "names no repro.capture.display_command to start it",
+        )
     root = profile.resolve_path(config["work_root"])
     root.mkdir(parents=True, exist_ok=True)
     with (root / "display.lock").open("a+b") as lock:
@@ -213,15 +292,22 @@ def _display(profile: Any, config: dict[str, Any], env: dict[str, str]) -> None:
             if "XDG_RUNTIME_DIR" in env:
                 Path(env["XDG_RUNTIME_DIR"]).mkdir(parents=True, exist_ok=True, mode=0o700)
             with (root / "display.log").open("a") as log:
-                subprocess.Popen([str(c) for c in command], stdout=log, stderr=subprocess.STDOUT,
-                                 stdin=subprocess.DEVNULL, start_new_session=True,
-                                 env={**os.environ, **{k: env[k] for k in ("XDG_RUNTIME_DIR",) if k in env}})
+                subprocess.Popen(
+                    [str(c) for c in command],
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    start_new_session=True,
+                    env={**os.environ, **{k: env[k] for k in ("XDG_RUNTIME_DIR",) if k in env}},
+                )
             deadline = time.monotonic() + 15
             while not socket.exists() and time.monotonic() < deadline:
                 time.sleep(0.2)
     if not socket.exists():
-        raise TasteError("repro.capture.display", f"display_command did not bring up {socket} within 15s; "
-                         f"log: {root / 'display.log'}")
+        raise TasteError(
+            "repro.capture.display",
+            f"display_command did not bring up {socket} within 15s; log: {root / 'display.log'}",
+        )
 
 
 def _cached(done: Path) -> dict[str, Any] | None:
@@ -242,8 +328,9 @@ class _Setup:
     """What every capture of one version shares: the profile's capture settings, the symbol table, the ROM, the
     host binary (known to be built from the current inputs) and the gdb script's text."""
 
-    def __init__(self, profile: Any, version: str, env: dict[str, str] | None = None,
-                 seconds: int | None = None) -> None:
+    def __init__(
+        self, profile: Any, version: str, env: dict[str, str] | None = None, seconds: int | None = None
+    ) -> None:
         self.profile = profile
         self.version = version
         self.config = _config(profile)
@@ -263,27 +350,35 @@ class _Setup:
         self.work = profile.resolve_path(self.config["work_root"])
         # a run of its own (a movie that reaches the function) overrides the profile's fixed input; the env is in
         # every key, so each movie is its own capture
-        self.env = {**{str(k): str(v) for k, v in self.config.get("env", {}).items()},
-                    **{str(k): str(v) for k, v in (env or {}).items()}}
+        self.env = {
+            **{str(k): str(v) for k, v in self.config.get("env", {}).items()},
+            **{str(k): str(v) for k, v in (env or {}).items()},
+        }
 
     def target(self, function: str) -> str:
         return resolve_target(function, self.vrams)
 
-    def keys(self, target: str, hit: int, names: list[str], script_source: bytes,
-             condition: str | None = None) -> tuple[str, str]:
+    def keys(
+        self, target: str, hit: int, names: list[str], script_source: bytes, condition: str | None = None
+    ) -> tuple[str, str]:
         """The capture's key and the key of whether the run reaches the entry (the recorded stubs do not change it)."""
-        digest = hashlib.sha256(script_source + Path(__file__).with_name("gdb_capture_many.py").read_bytes()
-                                + (b"\0" + condition.encode() if condition else b"")).hexdigest()
+        digest = hashlib.sha256(
+            script_source
+            + Path(__file__).with_name("gdb_capture_many.py").read_bytes()
+            + (b"\0" + condition.encode() if condition else b"")
+        ).hexdigest()
         args = (self.rom_sha1, target, self.vrams[target], hit, self.rdram_size, self.built["host_sha256"])
-        return (_key(*args, names, self.built["inputs_digest"], digest, self.env),
-                _key(*args, [], self.built["inputs_digest"], digest, self.env))
+        return (
+            _key(*args, names, self.built["inputs_digest"], digest, self.env),
+            _key(*args, [], self.built["inputs_digest"], digest, self.env),
+        )
 
-    def cached(self, key: str, reach: str, started: float) -> dict[str, Any] | None:
+    def cached(self, key: str, reach: str, started: cache_stages.Timing) -> dict[str, Any] | None:
         """The finished capture of `key`, or None; raises the cached miss when a run this long never reached it."""
         done = self.work / "captures" / key / "capture.json"
         cached = _cached(done) if done.is_file() else None
         if cached:
-            return {**cached, "cached": True, "wall_seconds": round(time.monotonic() - started, 3)}
+            return {**cached, "cached": True, "wall_seconds": round(started.seconds, 3)}
         miss = self.work / "misses" / f"{reach}.json"
         if miss.is_file():
             known = json.loads(miss.read_text())
@@ -291,8 +386,19 @@ class _Setup:
                 raise TasteError("repro.capture.unreached", known["message"] + " (cached miss)")
         return None
 
-    def commit(self, *, target: str, hit: int, names: list[str], key: str, reach: str, scratch: Path,
-               receipt: str, started: float, condition: str | None = None) -> dict[str, Any]:
+    def commit(
+        self,
+        *,
+        target: str,
+        hit: int,
+        names: list[str],
+        key: str,
+        reach: str,
+        scratch: Path,
+        receipt: str,
+        started: cache_stages.Timing,
+        condition: str | None = None,
+    ) -> dict[str, Any]:
         """Freeze one finished gdb dump (scratch holds rdram.host, ctx.bin and calls.json) as the capture of `key`."""
         root = self.work / "captures" / key
         ram = host_order((scratch / "rdram.host").read_bytes())
@@ -334,113 +440,161 @@ class _Setup:
             "calls_sha256": sha256_file(root / "calls.json") if names else None,
             "receipt": receipt,
             "cached": False,
-            "wall_seconds": round(time.monotonic() - started, 3),
+            "wall_seconds": round(started.seconds, 3),
         }
         atomic_json(root / "capture.json", record, sort_keys=True)  # the completeness mark: written last
         return record
 
 
 def capture_probe(
-    profile: Any, *, function: str, version: str, hit: int = 1, stubs: tuple[str, ...] = (),
-    env: dict[str, str] | None = None, seconds: int | None = None, condition: str | None = None,
+    profile: Any,
+    *,
+    function: str,
+    version: str,
+    hit: int = 1,
+    stubs: tuple[str, ...] = (),
+    env: dict[str, str] | None = None,
+    seconds: int | None = None,
+    condition: str | None = None,
 ) -> dict[str, Any]:
     """`env` and `seconds` are this capture's own run (the movie that reaches the function and how long it needs):
     they replace the profile's fixed input and raise its time limit, and they are part of the capture's key."""
-    started = time.monotonic()
-    names = sorted(set(stubs))
-    if hit < 1:
-        raise TasteError("repro.capture", "--hit counts from 1")
-    setup = _Setup(profile, version, env, seconds)
-    config, env = setup.config, setup.env
-    target = setup.target(function)
-    host, seconds = setup.built["host"], setup.seconds
-    script_source = Path(__file__).with_name("gdb_capture.py").read_bytes()
-    key, reach = setup.keys(target, hit, names, script_source, condition)
-    root = setup.work / "captures" / key
-    done, miss = root / "capture.json", setup.work / "misses" / f"{reach}.json"
-    cached = setup.cached(key, reach, started)
-    if cached:
-        return {"capture": cached, "seed": seed_of(cached)}
-    done.unlink(missing_ok=True)  # a partial or corrupted entry is redone
-    _display(profile, config, env)
-    scratch = root / "run"
-    scratch.mkdir(parents=True, exist_ok=True)
-    for stale in ("rdram.host", "ctx.bin", "calls.json"):
-        (scratch / stale).unlink(missing_ok=True)
-    script = scratch / "gdb_capture.py"
-    atomic_bytes(script, script_source)
-    trace = int(config.get("trace_seconds", 30))  # how long the callee trace may run after the stop
-    atomic_json(scratch / "config.json", gdb_config(target, hit, setup.rdram_size, scratch, names, trace, condition))
-    env["N64R_ROM"] = str(setup.rom)
-    env["TASTE_CAPTURE_CONFIG"] = str(scratch / "config.json")
-    ran = run_command(
-        profile,
-        name=f"capture {target} hit {hit}",
-        function=target,
-        command=["timeout", "-s", "INT", str(seconds), str(config.get("gdb", "gdb")), "-batch", "-x", str(script),
-                 str(host)],
-        artifacts=[],
-        env=env,
-        slots=max(1, int(config.get("jobs", 2))),
-    )
-    log = Path(ran["status"]["log_path"])
-    text = log.read_text(errors="replace") if log.is_file() else ""
-    if "CAPTURE-ERROR" in text:
-        raise TasteError("repro.capture", f"the gdb capture script failed; receipt: {ran['receipt']}")
-    if "CAPTURE-DONE" not in text or not (scratch / "rdram.host").is_file() or not (scratch / "ctx.bin").is_file():
-        stops = text.split("CAPTURE-MISS", 1)[1].strip().splitlines()[:12] if "CAPTURE-MISS" in text else []
-        where = "; the oracle was stopped in: " + " | ".join(s.strip() for s in stops) if stops else ""
-        if ran["status"].get("exit_code") != _TIMEOUT:
-            tail = " | ".join(line.strip() for line in text.strip().splitlines()[-4:])
-            raise TasteError("repro.capture.oracle_exit",
-                             f"the oracle ended (exit {ran['status'].get('exit_code')}) before {target} entry hit "
-                             f"{hit}: {tail}; receipt: {ran['receipt']}")
-        message = (f"{target} entry hit {hit} was not reached within {seconds}s of the oracle run{where}; reaching it "
-                   "needs a scripted input in repro.capture.env or a longer repro.capture.timeout_seconds")
-        atomic_json(miss, {"message": message, "timeout_seconds": seconds, "receipt": ran["receipt"]})
-        raise TasteError("repro.capture.unreached", f"{message}; receipt: {ran['receipt']}")
-    record = setup.commit(target=target, hit=hit, names=names, key=key, reach=reach, scratch=scratch,
-                          receipt=ran["receipt"], started=started, condition=condition)
-    return {"capture": record, "seed": seed_of(record)}
+    with cache_stages.timed("repro.capture") as started:
+        names = sorted(set(stubs))
+        if hit < 1:
+            raise TasteError("repro.capture", "--hit counts from 1")
+        setup = _Setup(profile, version, env, seconds)
+        config, env = setup.config, setup.env
+        target = setup.target(function)
+        host, seconds = setup.built["host"], setup.seconds
+        script_source = Path(__file__).with_name("gdb_capture.py").read_bytes()
+        key, reach = setup.keys(target, hit, names, script_source, condition)
+        root = setup.work / "captures" / key
+        done, miss = root / "capture.json", setup.work / "misses" / f"{reach}.json"
+        cached = setup.cached(key, reach, started)
+        if cached:
+            return {"capture": cached, "seed": seed_of(cached)}
+        done.unlink(missing_ok=True)  # a partial or corrupted entry is redone
+        _display(profile, config, env)
+        scratch = root / "run"
+        scratch.mkdir(parents=True, exist_ok=True)
+        for stale in ("rdram.host", "ctx.bin", "calls.json"):
+            (scratch / stale).unlink(missing_ok=True)
+        script = scratch / "gdb_capture.py"
+        atomic_bytes(script, script_source)
+        trace = int(config.get("trace_seconds", 30))  # how long the callee trace may run after the stop
+        atomic_json(
+            scratch / "config.json", gdb_config(target, hit, setup.rdram_size, scratch, names, trace, condition)
+        )
+        env["N64R_ROM"] = str(setup.rom)
+        env["TASTE_CAPTURE_CONFIG"] = str(scratch / "config.json")
+        ran = run_command(
+            profile,
+            name=f"capture {target} hit {hit}",
+            function=target,
+            command=[
+                "timeout",
+                "-s",
+                "INT",
+                str(seconds),
+                str(config.get("gdb", "gdb")),
+                "-batch",
+                "-x",
+                str(script),
+                str(host),
+            ],
+            artifacts=[],
+            env=env,
+            slots=max(1, int(config.get("jobs", 2))),
+        )
+        log = Path(ran["status"]["log_path"])
+        text = log.read_text(errors="replace") if log.is_file() else ""
+        if "CAPTURE-ERROR" in text:
+            raise TasteError("repro.capture", f"the gdb capture script failed; receipt: {ran['receipt']}")
+        if "CAPTURE-DONE" not in text or not (scratch / "rdram.host").is_file() or not (scratch / "ctx.bin").is_file():
+            stops = text.split("CAPTURE-MISS", 1)[1].strip().splitlines()[:12] if "CAPTURE-MISS" in text else []
+            where = "; the oracle was stopped in: " + " | ".join(s.strip() for s in stops) if stops else ""
+            if ran["status"].get("exit_code") != _TIMEOUT:
+                tail = " | ".join(line.strip() for line in text.strip().splitlines()[-4:])
+                raise TasteError(
+                    "repro.capture.oracle_exit",
+                    f"the oracle ended (exit {ran['status'].get('exit_code')}) before {target} entry hit "
+                    f"{hit}: {tail}; receipt: {ran['receipt']}",
+                )
+            message = (
+                f"{target} entry hit {hit} was not reached within {seconds}s of the oracle run{where}; reaching it "
+                "needs a scripted input in repro.capture.env or a longer repro.capture.timeout_seconds"
+            )
+            atomic_json(miss, {"message": message, "timeout_seconds": seconds, "receipt": ran["receipt"]})
+            raise TasteError("repro.capture.unreached", f"{message}; receipt: {ran['receipt']}")
+        record = setup.commit(
+            target=target,
+            hit=hit,
+            names=names,
+            key=key,
+            reach=reach,
+            scratch=scratch,
+            receipt=ran["receipt"],
+            started=started,
+            condition=condition,
+        )
+        return {"capture": record, "seed": seed_of(record)}
 
 
-def gdb_batch_config(targets: list[dict[str, Any]], hit: int, rdram_size: int, seconds: int,
-                     trace_seconds: int = 30) -> dict[str, Any]:
+def gdb_batch_config(
+    targets: list[dict[str, Any]], hit: int, rdram_size: int, seconds: int, trace_seconds: int = 30
+) -> dict[str, Any]:
     """The config of the batch gdb script (gdb_capture_many.py): one entry per function (symbol, out directory,
     callees to record), the run's own time limit and the per-function trace limit."""
-    return {"targets": targets, "hit": hit, "rdram_size": rdram_size, "seconds": seconds,
-            "max_writes": _MAX_WRITES, "max_calls": _MAX_CALLS, "trace_seconds": trace_seconds}
+    return {
+        "targets": targets,
+        "hit": hit,
+        "rdram_size": rdram_size,
+        "seconds": seconds,
+        "max_writes": _MAX_WRITES,
+        "max_calls": _MAX_CALLS,
+        "trace_seconds": trace_seconds,
+    }
 
 
-def capture_batch(
-    profile: Any, *, plan: list[dict[str, Any]], version: str, hit: int = 1
-) -> dict[str, Any]:
+def capture_batch(profile: Any, *, plan: list[dict[str, Any]], version: str, hit: int = 1) -> dict[str, Any]:
     """Rows that name their own run (`env`, `seconds`: a movie that reaches the function) are captured one oracle
     boot per distinct run, the others share the profile's run; the rows come back in plan order."""
-    started = time.monotonic()
-    groups: dict[str, list[int]] = {}
-    for index, item in enumerate(plan):
-        own = json.dumps([item.get("env") or {}, item.get("seconds") or 0], sort_keys=True)
-        groups.setdefault(own, []).append(index)
-    ordered: list[dict[str, Any]] = [{}] * len(plan)
-    counts: dict[str, int] = {}
-    runs, receipt = 0, ""
-    for name, indexes in groups.items():
-        env, seconds = json.loads(name)
-        got = _capture_group(profile, plan=[plan[i] for i in indexes], version=version, hit=hit, env=env,
-                             seconds=seconds or None)
-        for i, row in zip(indexes, got["captures"], strict=True):
-            ordered[i] = row
-        runs += got["oracle_runs"]
-        receipt = got["receipt"] or receipt
-    for row in ordered:
-        counts[row["status"]] = counts.get(row["status"], 0) + 1
-    return {"captures": ordered, "counts": counts, "oracle_runs": runs, "receipt": receipt,
-            "wall_seconds": round(time.monotonic() - started, 3)}
+    with cache_stages.timed("cake_taste.repro.capture.capture_batch.started") as started:
+        groups: dict[str, list[int]] = {}
+        for index, item in enumerate(plan):
+            own = json.dumps([item.get("env") or {}, item.get("seconds") or 0], sort_keys=True)
+            groups.setdefault(own, []).append(index)
+        ordered: list[dict[str, Any]] = [{}] * len(plan)
+        counts: dict[str, int] = {}
+        runs, receipt = 0, ""
+        for name, indexes in groups.items():
+            env, seconds = json.loads(name)
+            got = _capture_group(
+                profile, plan=[plan[i] for i in indexes], version=version, hit=hit, env=env, seconds=seconds or None
+            )
+            for i, row in zip(indexes, got["captures"], strict=True):
+                ordered[i] = row
+            runs += got["oracle_runs"]
+            receipt = got["receipt"] or receipt
+        for row in ordered:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        return {
+            "captures": ordered,
+            "counts": counts,
+            "oracle_runs": runs,
+            "receipt": receipt,
+            "wall_seconds": round(started.seconds, 3),
+        }
 
 
 def _capture_group(
-    profile: Any, *, plan: list[dict[str, Any]], version: str, hit: int = 1, env: dict[str, str] | None = None,
+    profile: Any,
+    *,
+    plan: list[dict[str, Any]],
+    version: str,
+    hit: int = 1,
+    env: dict[str, str] | None = None,
     seconds: int | None = None,
 ) -> dict[str, Any]:
     """Capture many functions in ONE oracle boot. `plan` rows are {function, stubs}; each ends with exactly the
@@ -451,130 +605,211 @@ def _capture_group(
     (default 150, never less than a single capture's limit): a function the oracle has not entered by then is
     unreached, as for a single capture. Every function a single capture reaches in its 120 s the batch reaches
     in the same game time (measured: 21 of 21 within 58 s)."""
-    started = time.monotonic()
-    if hit < 1:
-        raise TasteError("repro.capture", "--hit counts from 1")
-    setup = _Setup(profile, version, env, seconds)
-    config, env = setup.config, setup.env
-    seconds = max(int(config.get("batch_seconds", max(150, setup.seconds))), setup.seconds)
-    setup.seconds = seconds
-    script_source = Path(__file__).with_name("gdb_capture_many.py").read_bytes()
-    # the single capture's script keys the entries, so one cache serves both
-    single = Path(__file__).with_name("gdb_capture.py").read_bytes()
-    rows: dict[str, dict[str, Any]] = {}
-    todo: dict[str, dict[str, Any]] = {}
-    for item in plan:
-        label = f"{item['function']}@{item.get('hit', hit)}"
-        number = int(item.get("hit", hit))
-        if number < 1:
-            raise TasteError("repro.capture", "hit counts from 1")
-        names = sorted(set(item.get("stubs", [])))
-        try:
-            target = setup.target(str(item["function"]))
-            key, reach = setup.keys(target, number, names, single)
-            cached = setup.cached(key, reach, started)
-        except TasteError as exc:
-            rows[label] = {"function": label, "status": exc.key, "message": exc.detail}
-            continue
-        if cached:
-            rows[label] = {"function": target, "status": "captured", "key": key, "cached": True,
-                           "wall_seconds": cached["wall_seconds"], "capture": cached, "seed": seed_of(cached)}
-        else:
-            todo.setdefault(f"{target}/{key}", {"labels": [], "target": target, "names": names, "key": key,
-                                                "reach": reach, "hit": number})["labels"].append(label)
-    receipt = ""
-    if todo:
-        _display(profile, config, env)
-        batch_root = setup.work / "batches" / hashlib.sha256("\n".join(sorted(todo)).encode()).hexdigest()[:16]
-        batch_root.mkdir(parents=True, exist_ok=True)
-        targets = []
-        for item in todo.values():
-            scratch = setup.work / "captures" / item["key"] / "run"
-            scratch.mkdir(parents=True, exist_ok=True)
-            for stale in ("rdram.host", "ctx.bin", "calls.json", "done"):
-                (scratch / stale).unlink(missing_ok=True)
-            (setup.work / "captures" / item["key"] / "capture.json").unlink(missing_ok=True)
-            item["scratch"] = scratch
-            targets.append({"symbol": item["target"], "out": str(scratch), "stubs": item["names"], "hit": item["hit"]})
-        script = batch_root / "gdb_capture_many.py"
-        atomic_bytes(script, script_source)
-        atomic_json(batch_root / "config.json", gdb_batch_config(
-            targets, hit, setup.rdram_size, seconds, int(config.get("trace_seconds", 30))))
-        env["N64R_ROM"] = str(setup.rom)
-        env["TASTE_CAPTURE_CONFIG"] = str(batch_root / "config.json")
-        ran = run_command(
-            profile,
-            name=f"capture batch of {len(targets)} hit {hit}",
-            function="",
-            command=["timeout", "-s", "INT", str(seconds + int(config.get("trace_seconds", 30)) + 30),
-                     str(config.get("gdb", "gdb")), "-batch", "-x", str(script), str(setup.built["host"])],
-            artifacts=[],
-            env=env,
-            slots=max(1, int(config.get("jobs", 2))),
-        )
-        receipt = ran["receipt"]
-        log = Path(ran["status"]["log_path"])
-        text = log.read_text(errors="replace") if log.is_file() else ""
-        if "CAPTURE-ERROR" in text:
-            raise TasteError("repro.capture", f"the gdb batch capture script failed; receipt: {receipt}")
-        timed_out = ran["status"].get("exit_code") == _TIMEOUT or "CAPTURE-TIMEOUT" in text
-        for item in todo.values():
-            scratch = item["scratch"]
-            row: dict[str, Any]
-            if (scratch / "done").is_file() and (scratch / "rdram.host").is_file() and (scratch / "ctx.bin").is_file():
-                record = setup.commit(target=item["target"], hit=item["hit"], names=item["names"], key=item["key"],
-                                      reach=item["reach"], scratch=scratch, receipt=receipt, started=started)
-                row = {"function": item["target"], "status": "captured", "key": item["key"],
-                       "cached": False, "calls": record["calls"], "calls_complete": record["calls_complete"],
-                       "capture": record, "seed": seed_of(record)}
-            elif timed_out:
-                message = (f"{item['target']} entry hit {item['hit']} was not reached within {seconds}s "
-                           "of the oracle run "
-                           "(a batch capture); reaching it needs a scripted input in repro.capture.env or a longer "
-                           "repro.capture.batch_seconds")
-                atomic_json(setup.work / "misses" / f"{item['reach']}.json",
-                            {"message": message, "timeout_seconds": seconds, "receipt": receipt})
-                row = {"function": item["target"], "status": "repro.capture.unreached", "message": message}
+    with cache_stages.timed("cake_taste.repro.capture._capture_group.started") as started:
+        if hit < 1:
+            raise TasteError("repro.capture", "--hit counts from 1")
+        setup = _Setup(profile, version, env, seconds)
+        config, env = setup.config, setup.env
+        seconds = max(int(config.get("batch_seconds", max(150, setup.seconds))), setup.seconds)
+        setup.seconds = seconds
+        script_source = Path(__file__).with_name("gdb_capture_many.py").read_bytes()
+        # the single capture's script keys the entries, so one cache serves both
+        single = Path(__file__).with_name("gdb_capture.py").read_bytes()
+        rows: dict[str, dict[str, Any]] = {}
+        todo: dict[str, dict[str, Any]] = {}
+        for item in plan:
+            label = f"{item['function']}@{item.get('hit', hit)}"
+            number = int(item.get("hit", hit))
+            if number < 1:
+                raise TasteError("repro.capture", "hit counts from 1")
+            names = sorted(set(item.get("stubs", [])))
+            try:
+                target = setup.target(str(item["function"]))
+                key, reach = setup.keys(target, number, names, single)
+                cached = setup.cached(key, reach, started)
+            except TasteError as exc:
+                rows[label] = {"function": label, "status": exc.key, "message": exc.detail}
+                continue
+            if cached:
+                rows[label] = {
+                    "function": target,
+                    "status": "captured",
+                    "key": key,
+                    "cached": True,
+                    "wall_seconds": cached["wall_seconds"],
+                    "capture": cached,
+                    "seed": seed_of(cached),
+                }
             else:
-                row = {"function": item["target"], "status": "repro.capture.oracle_exit",
-                       "message": f"the oracle ended (exit {ran['status'].get('exit_code')}) before "
-                       f"{item['target']} entry hit {item['hit']}; receipt: {receipt}"}
-            for label in item["labels"]:
-                rows[label] = row
-    ordered = [rows[f"{item['function']}@{item.get('hit', hit)}"] for item in plan]
-    counts: dict[str, int] = {}
-    for row in ordered:
-        counts[row["status"]] = counts.get(row["status"], 0) + 1
-    return {"captures": ordered, "counts": counts, "oracle_runs": int(bool(todo)), "receipt": receipt,
-            "wall_seconds": round(time.monotonic() - started, 3)}
+                todo.setdefault(
+                    f"{target}/{key}",
+                    {"labels": [], "target": target, "names": names, "key": key, "reach": reach, "hit": number},
+                )["labels"].append(label)
+        receipt = ""
+        if todo:
+            _display(profile, config, env)
+            batch_root = setup.work / "batches" / hashlib.sha256("\n".join(sorted(todo)).encode()).hexdigest()[:16]
+            batch_root.mkdir(parents=True, exist_ok=True)
+            targets = []
+            for item in todo.values():
+                scratch = setup.work / "captures" / item["key"] / "run"
+                scratch.mkdir(parents=True, exist_ok=True)
+                for stale in ("rdram.host", "ctx.bin", "calls.json", "done"):
+                    (scratch / stale).unlink(missing_ok=True)
+                (setup.work / "captures" / item["key"] / "capture.json").unlink(missing_ok=True)
+                item["scratch"] = scratch
+                targets.append(
+                    {"symbol": item["target"], "out": str(scratch), "stubs": item["names"], "hit": item["hit"]}
+                )
+            script = batch_root / "gdb_capture_many.py"
+            atomic_bytes(
+                script,
+                (
+                    "import sys\nsys.path.insert(0, "
+                    + repr(str(Path(abucache.__file__).resolve().parent.parent))
+                    + ")\n"
+                ).encode()
+                + script_source,
+            )
+            atomic_json(
+                batch_root / "config.json",
+                gdb_batch_config(targets, hit, setup.rdram_size, seconds, int(config.get("trace_seconds", 30))),
+            )
+            env["N64R_ROM"] = str(setup.rom)
+            env["TASTE_CAPTURE_CONFIG"] = str(batch_root / "config.json")
+            ran = run_command(
+                profile,
+                name=f"capture batch of {len(targets)} hit {hit}",
+                function="",
+                command=[
+                    "timeout",
+                    "-s",
+                    "INT",
+                    str(seconds + int(config.get("trace_seconds", 30)) + 30),
+                    str(config.get("gdb", "gdb")),
+                    "-batch",
+                    "-x",
+                    str(script),
+                    str(setup.built["host"]),
+                ],
+                artifacts=[],
+                env=env,
+                slots=max(1, int(config.get("jobs", 2))),
+            )
+            receipt = ran["receipt"]
+            log = Path(ran["status"]["log_path"])
+            text = log.read_text(errors="replace") if log.is_file() else ""
+            if "CAPTURE-ERROR" in text:
+                raise TasteError("repro.capture", f"the gdb batch capture script failed; receipt: {receipt}")
+            timed_out = ran["status"].get("exit_code") == _TIMEOUT or "CAPTURE-TIMEOUT" in text
+            for item in todo.values():
+                scratch = item["scratch"]
+                row: dict[str, Any]
+                if (
+                    (scratch / "done").is_file()
+                    and (scratch / "rdram.host").is_file()
+                    and (scratch / "ctx.bin").is_file()
+                ):
+                    record = setup.commit(
+                        target=item["target"],
+                        hit=item["hit"],
+                        names=item["names"],
+                        key=item["key"],
+                        reach=item["reach"],
+                        scratch=scratch,
+                        receipt=receipt,
+                        started=started,
+                    )
+                    row = {
+                        "function": item["target"],
+                        "status": "captured",
+                        "key": item["key"],
+                        "cached": False,
+                        "calls": record["calls"],
+                        "calls_complete": record["calls_complete"],
+                        "capture": record,
+                        "seed": seed_of(record),
+                    }
+                elif timed_out:
+                    message = (
+                        f"{item['target']} entry hit {item['hit']} was not reached within {seconds}s "
+                        "of the oracle run "
+                        "(a batch capture); reaching it needs a scripted input in repro.capture.env or a longer "
+                        "repro.capture.batch_seconds"
+                    )
+                    atomic_json(
+                        setup.work / "misses" / f"{item['reach']}.json",
+                        {"message": message, "timeout_seconds": seconds, "receipt": receipt},
+                    )
+                    row = {"function": item["target"], "status": "repro.capture.unreached", "message": message}
+                else:
+                    row = {
+                        "function": item["target"],
+                        "status": "repro.capture.oracle_exit",
+                        "message": f"the oracle ended (exit {ran['status'].get('exit_code')}) before "
+                        f"{item['target']} entry hit {item['hit']}; receipt: {receipt}",
+                    }
+                for label in item["labels"]:
+                    rows[label] = row
+        ordered = [rows[f"{item['function']}@{item.get('hit', hit)}"] for item in plan]
+        counts: dict[str, int] = {}
+        for row in ordered:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        return {
+            "captures": ordered,
+            "counts": counts,
+            "oracle_runs": int(bool(todo)),
+            "receipt": receipt,
+            "wall_seconds": round(started.seconds, 3),
+        }
 
 
 def capture_many(
-    profile: Any, *, functions: list[str], version: str, hit: int = 1, stubs: tuple[str, ...] = (),
-    jobs: int | None = None, env: dict[str, str] | None = None, seconds: int | None = None,
+    profile: Any,
+    *,
+    functions: list[str],
+    version: str,
+    hit: int = 1,
+    stubs: tuple[str, ...] = (),
+    jobs: int | None = None,
+    env: dict[str, str] | None = None,
+    seconds: int | None = None,
     condition: str | None = None,
 ) -> dict[str, Any]:
     """Capture several functions, `jobs` oracle runs at a time (default: the profile's `jobs`; the slot locks bound
     the total over every process). Each function ends captured or with its named finding."""
     width = max(1, jobs or int(_config(profile).get("jobs", 2)))
-    started = time.monotonic()
+    with cache_stages.timed("cake_taste.repro.capture.capture_many.started") as started:
 
-    def one(function: str) -> dict[str, Any]:
-        try:
-            got = capture_probe(profile, function=function, version=version, hit=hit, stubs=stubs, env=env,
-                                seconds=seconds, condition=condition)
-        except TasteError as exc:
-            return {"function": function, "status": exc.key, "message": exc.detail}
-        shown = got["capture"]
-        return {"function": function, "status": "captured", "key": shown["key"], "cached": shown["cached"],
-                "wall_seconds": shown["wall_seconds"]}
+        def one(function: str) -> dict[str, Any]:
+            try:
+                got = capture_probe(
+                    profile,
+                    function=function,
+                    version=version,
+                    hit=hit,
+                    stubs=stubs,
+                    env=env,
+                    seconds=seconds,
+                    condition=condition,
+                )
+            except TasteError as exc:
+                return {"function": function, "status": exc.key, "message": exc.detail}
+            shown = got["capture"]
+            return {
+                "function": function,
+                "status": "captured",
+                "key": shown["key"],
+                "cached": shown["cached"],
+                "wall_seconds": shown["wall_seconds"],
+            }
 
-    with ThreadPoolExecutor(max_workers=width) as pool:
-        rows = list(pool.map(one, functions))
-    counts: dict[str, int] = {}
-    for row in rows:
-        counts[row["status"]] = counts.get(row["status"], 0) + 1
-    return {"captures": rows, "counts": counts, "jobs": width, "wall_seconds": round(time.monotonic() - started, 3)}
+        with ThreadPoolExecutor(max_workers=width) as pool:
+            rows = list(pool.map(one, functions))
+        counts: dict[str, int] = {}
+        for row in rows:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        return {"captures": rows, "counts": counts, "jobs": width, "wall_seconds": round(started.seconds, 3)}
 
 
 def seed_of(record: dict[str, Any]) -> dict[str, Any]:

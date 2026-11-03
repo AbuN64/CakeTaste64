@@ -14,9 +14,10 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import time
 from pathlib import Path
 from typing import Any
+
+from abucache import stages as cache_stages
 
 from cake_taste import TasteError
 from cake_taste.files import atomic_bytes, atomic_json, sha256_bytes, sha256_file
@@ -64,6 +65,8 @@ def prune_cache(results: Path, keep: Path, limit_bytes: int) -> int:
         total -= size
         removed += 1
     return removed
+
+
 _CALLS = ("call", "stub")
 
 
@@ -126,9 +129,11 @@ def parse_events(text: str) -> list[dict[str, Any]]:
                         "rounding": csr & 3,
                         "flags": csr & 0x7C,
                         "exceptions": [
-                            name for bit, name in enumerate(
+                            name
+                            for bit, name in enumerate(
                                 ("inexact", "underflow", "overflow", "divide-by-zero", "invalid"), 2
-                            ) if csr & (1 << bit)
+                            )
+                            if csr & (1 << bit)
                         ],
                         "guest_exception_enables": "unmodeled",
                     }
@@ -234,252 +239,264 @@ def echo_patches(patches: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def cases_probe(profile: Any, *, function: str | None, script: Path) -> dict[str, Any]:
-    started = time.monotonic()
-    config = _config(profile)
-    config_repro = profile.section("repro")
-    try:
-        request = json.loads(script.read_text())
-    except (OSError, ValueError) as exc:
-        raise TasteError("repro.request", f"{script}: {exc}") from exc
-    version, target_text = request.get("version"), function or request.get("function")
-    if not version or not target_text:
-        raise TasteError("repro.request", "the request needs version and function (or pass --function)")
-    cases = request.get("cases")
-    if not isinstance(cases, list) or not cases:
-        raise TasteError("repro.request", "the request needs a nonempty cases list")
-    settings = load_recomp(profile)
-    facts = json.loads(profile.resolve_path(config["facts"]).read_text())
-    boot = facts.get("boot", {})
-    if facts.get("version") not in (None, version) or "rdram_size" not in boot:
-        raise TasteError("repro.facts", f"facts {config['facts']} do not describe {version} with boot.rdram_size")
-    gen = settings.out(version)
-    # the runtime names N64Recomp gives the libultra routines it replaces (osRecvMesg_recomp), at their vram: behave
-    # finds their prototypes through the project's own name at that address
-    replaced = {f"{name}_recomp": f"{address:#x}" for address, name in sorted(settings.names_for(version).items())}
-    vrams = function_vrams(gen / "symbols.toml")
-    target = resolve_target(str(target_text), vrams)
-    bodies = index_bodies(gen / "funcs")
-    root, entry, candidate_sha = target, vrams[target], None
-    work_root = profile.resolve_path(config["work_root"])
-    candidate = None
-    if request.get("candidate"):
-        candidate = parse_candidate(request["candidate"], script.parent)
-        made = recompile(settings, version, candidate, work_root, vrams)
-        bodies = {**bodies, **made}
-        vrams = {**vrams, **{PREFIX + f.name: candidate.vram + f.offset for f in candidate.functions}}
-        named = str(request["candidate"].get("entry", target))
-        root = PREFIX + named
-        if root not in made:
-            raise TasteError("repro.candidate", f"candidate defines no function {named}")
-        entry, candidate_sha = vrams[root], candidate.sha256
-    stub_v0 = {resolve_target(str(k), vrams): _int(v, f"stub_v0.{k}") for k, v in request.get("stub_v0", {}).items()}
-    boundary = {resolve_target(str(name), vrams) for name in request.get("boundary", [])}
-    depth = int(request.get("depth", 1))
-    deep = limit_depth(root, bodies, depth, same_unit=PREFIX if candidate else "")
-    found = closure(
-        root,
-        bodies,
-        boundary=boundary | stub_v0.keys() | deep,
-        limit=int(request.get("max_functions", config.get("max_functions", 256))),
-        spill=True,  # a closure past the cap ends in boundary stubs: behave compares the calls made to them
-    )
-    include = '#include "recomp.h"\n#include "behave.h"'
-    unit = render_unit(found, vrams, include, True, stub_v0, headers=(), runtime_v0=True)
-
-    memory_end = _int(request.get("memory_end", _RAM_END + int(boot["rdram_size"])), "memory_end")
-    memory = Memory(max(int(boot["rdram_size"]), memory_end - _RAM_END), boot.get("tlb", []))
-    seed = request.get("seed", {})
-    loaded = (
-        seed_layout(memory, load_layout(settings, version), settings.rom(version).read_bytes())
-        if seed.get("layout", True)
-        else []
-    )
-    seeded = []
-    for item in loaded:
-        seeded.append((int(item["vram"]), int(item["vram"]) + int(item["size"])))
-        if int(item["vram"]) >= _RAM_END:
-            seeded.append((int(item["vram"]) & 0x7FFFFFFF, (int(item["vram"]) & 0x7FFFFFFF) + int(item["size"])))
-    for index, item in enumerate(seed.get("memory", [])):
-        address, payload = _int(item["addr"], f"seed.memory[{index}].addr"), _payload(item, index)
-        memory.write(address, payload)
-        seeded.append((address, address + len(payload)))
-    if candidate:  # after the seed: a captured RDRAM image never overwrites the body under test
-        memory.write(candidate.vram, candidate.image)
-        seeded.append((candidate.vram, candidate.vram + len(candidate.image)))
-    sp = _int(request.get("sp", boot.get("sp", 0x80400000)), "sp")
-    window = _int(request.get("stack_window", 0x4000), "stack_window")
-    seeded.append((sp - window, sp + 0x400))
-    regs_base = registers({}, sp, boot.get("registers", {}))
-    before = bytes(memory.data)
-    timeout_ms = int(float(request.get("timeout_seconds", 2)) * 1000)
-    event_budget = int(request["event_budget"]) if request.get("event_budget") else None
-    lenient = bool(request.get("lenient"))
-    if lenient and not str(request.get("lenient_reason") or "").strip():
-        raise TasteError("repro.lenient_reason", "lenient memory requires an explicit nonempty reason")
-    frame = (sp - window, sp + 0x10)
-    cases_file = cases_text(cases, regs_base, entry, seeded, sp, timeout_ms, stub_v0, event_budget, lenient, frame)
-
-    header = host_profile_header(boot)
-    host = profile.resolve_path(config["host_dir"])
-    digest = hashlib.sha256(
-        unit.encode()
-        + header.encode()
-        + b"".join(sha256_file(host / "behave" / name).encode() for name in ("harness.c", "behave.h", "fpu.h"))
-    ).hexdigest()[:16]
-    work = work_root / f"behave-{root}-{digest}"
-    work.mkdir(parents=True, exist_ok=True)
-    atomic_bytes(work / "closure.c", unit.encode())
-    atomic_bytes(work / "host_profile.h", header.encode())
-    atomic_bytes(work / "rdram.bin", host_order(before))
-    atomic_bytes(work / "cases.txt", cases_file.encode())
-    cache = None
-    if candidate is None:  # an original's events depend only on the ROM, its symbols, the closure and the cases
-        key = hashlib.sha256(
-            json.dumps(
-                [
-                    digest,
-                    hashlib.sha256(cases_file.encode()).hexdigest(),
-                    sha256_file(settings.rom(version)),
-                    sha256_file(gen / "symbols.toml"),
-                    memory_end,
-                    depth,
-                    *([hashlib.sha256(before).hexdigest()] if seed.get("memory") else []),  # a seeded image is input
-                ]
-            ).encode()
-        ).hexdigest()[:24]
-        cache = work_root / "results" / key
-        if (cache / "probe.json").is_file():
-            cached = json.loads((cache / "probe.json").read_text())
-            return {
-                "probe": {**cached, "cached": True, "wall_seconds": round(time.monotonic() - started, 3),
-                          "replaced": replaced},
-                "run_id": key,
-                "receipt": str(cache / "receipt.json"),
-            }
-    binary = work / "harness"
-    build_receipt = None
-    waited = 0.0  # seconds spent queued behind other isolated repros
-    if not binary.is_file():
-        build = [
-            str(config.get("cc", "cc")),
-            *config.get("cflags", ["-O1", "-w", "-std=gnu17"]),
-            "-I",
-            str(host / "behave"),
-            "-I",
-            str(host / "probe"),
-            "-I",
-            str(work),
-            "-I",
-            str(profile.resolve_path(config["runtime_include"])),
-            str(work / "closure.c"),
-            str(host / "behave" / "harness.c"),
-            str(host / "addrmap.c"),
-            "-o",
-            str(binary),
-            "-lm",
-        ]
-        built = run_command(
-            profile, name=f"behave {root} build", function=root, command=build, artifacts=[work / "closure.c"]
+    with cache_stages.timed("cake_taste.repro.cases.cases_probe.started") as started:
+        config = _config(profile)
+        config_repro = profile.section("repro")
+        try:
+            request = json.loads(script.read_text())
+        except (OSError, ValueError) as exc:
+            raise TasteError("repro.request", f"{script}: {exc}") from exc
+        version, target_text = request.get("version"), function or request.get("function")
+        if not version or not target_text:
+            raise TasteError("repro.request", "the request needs version and function (or pass --function)")
+        cases = request.get("cases")
+        if not isinstance(cases, list) or not cases:
+            raise TasteError("repro.request", "the request needs a nonempty cases list")
+        settings = load_recomp(profile)
+        facts = json.loads(profile.resolve_path(config["facts"]).read_text())
+        boot = facts.get("boot", {})
+        if facts.get("version") not in (None, version) or "rdram_size" not in boot:
+            raise TasteError("repro.facts", f"facts {config['facts']} do not describe {version} with boot.rdram_size")
+        gen = settings.out(version)
+        # the runtime names N64Recomp gives the libultra routines it replaces (osRecvMesg_recomp), at their vram: behave
+        # finds their prototypes through the project's own name at that address
+        replaced = {f"{name}_recomp": f"{address:#x}" for address, name in sorted(settings.names_for(version).items())}
+        vrams = function_vrams(gen / "symbols.toml")
+        target = resolve_target(str(target_text), vrams)
+        bodies = index_bodies(gen / "funcs")
+        root, entry, candidate_sha = target, vrams[target], None
+        work_root = profile.resolve_path(config["work_root"])
+        candidate = None
+        if request.get("candidate"):
+            candidate = parse_candidate(request["candidate"], script.parent)
+            made = recompile(settings, version, candidate, work_root, vrams)
+            bodies = {**bodies, **made}
+            vrams = {**vrams, **{PREFIX + f.name: candidate.vram + f.offset for f in candidate.functions}}
+            named = str(request["candidate"].get("entry", target))
+            root = PREFIX + named
+            if root not in made:
+                raise TasteError("repro.candidate", f"candidate defines no function {named}")
+            entry, candidate_sha = vrams[root], candidate.sha256
+        stub_v0 = {
+            resolve_target(str(k), vrams): _int(v, f"stub_v0.{k}") for k, v in request.get("stub_v0", {}).items()
+        }
+        boundary = {resolve_target(str(name), vrams) for name in request.get("boundary", [])}
+        depth = int(request.get("depth", 1))
+        deep = limit_depth(root, bodies, depth, same_unit=PREFIX if candidate else "")
+        found = closure(
+            root,
+            bodies,
+            boundary=boundary | stub_v0.keys() | deep,
+            limit=int(request.get("max_functions", config.get("max_functions", 256))),
+            spill=True,  # a closure past the cap ends in boundary stubs: behave compares the calls made to them
         )
-        build_receipt = built["receipt"]
-        waited += built["status"]["lock_wait_seconds"]
-        if built["status"]["phase"] != "passed":
-            raise TasteError("repro.failed", f"behave build failed; receipt: {build_receipt}")
-    ran = run_command(
-        profile,
-        name=f"behave {root} run",
-        function=root,
-        command=[str(binary), str(work / "rdram.bin"), str(work / "cases.txt"), "."],
-        artifacts=[Path("events.txt")],
-    )
-    waited += ran["status"]["lock_wait_seconds"]
-    run_dir = Path(ran["status"]["run_dir"])
-    if ran["status"]["phase"] != "passed":
-        raise TasteError("repro.failed", f"behave run failed; receipt: {ran['receipt']}")
-    events_file = run_dir / "events.txt"
-    max_events = int(config_repro.get("behave_max_events_mb", _MAX_EVENTS_MB)) * 1024 * 1024
-    events_size = events_file.stat().st_size
-    if events_size > max_events:
+        include = '#include "recomp.h"\n#include "behave.h"'
+        unit = render_unit(found, vrams, include, True, stub_v0, headers=(), runtime_v0=True)
+
+        memory_end = _int(request.get("memory_end", _RAM_END + int(boot["rdram_size"])), "memory_end")
+        memory = Memory(max(int(boot["rdram_size"]), memory_end - _RAM_END), boot.get("tlb", []))
+        seed = request.get("seed", {})
+        loaded = (
+            seed_layout(memory, load_layout(settings, version), settings.rom(version).read_bytes())
+            if seed.get("layout", True)
+            else []
+        )
+        seeded = []
+        for item in loaded:
+            seeded.append((int(item["vram"]), int(item["vram"]) + int(item["size"])))
+            if int(item["vram"]) >= _RAM_END:
+                seeded.append((int(item["vram"]) & 0x7FFFFFFF, (int(item["vram"]) & 0x7FFFFFFF) + int(item["size"])))
+        for index, item in enumerate(seed.get("memory", [])):
+            address, payload = _int(item["addr"], f"seed.memory[{index}].addr"), _payload(item, index)
+            memory.write(address, payload)
+            seeded.append((address, address + len(payload)))
+        if candidate:  # after the seed: a captured RDRAM image never overwrites the body under test
+            memory.write(candidate.vram, candidate.image)
+            seeded.append((candidate.vram, candidate.vram + len(candidate.image)))
+        sp = _int(request.get("sp", boot.get("sp", 0x80400000)), "sp")
+        window = _int(request.get("stack_window", 0x4000), "stack_window")
+        seeded.append((sp - window, sp + 0x400))
+        regs_base = registers({}, sp, boot.get("registers", {}))
+        before = bytes(memory.data)
+        timeout_ms = int(float(request.get("timeout_seconds", 2)) * 1000)
+        event_budget = int(request["event_budget"]) if request.get("event_budget") else None
+        lenient = bool(request.get("lenient"))
+        if lenient and not str(request.get("lenient_reason") or "").strip():
+            raise TasteError("repro.lenient_reason", "lenient memory requires an explicit nonempty reason")
+        frame = (sp - window, sp + 0x10)
+        cases_file = cases_text(cases, regs_base, entry, seeded, sp, timeout_ms, stub_v0, event_budget, lenient, frame)
+
+        header = host_profile_header(boot)
+        host = profile.resolve_path(config["host_dir"])
+        digest = hashlib.sha256(
+            unit.encode()
+            + header.encode()
+            + b"".join(sha256_file(host / "behave" / name).encode() for name in ("harness.c", "behave.h", "fpu.h"))
+        ).hexdigest()[:16]
+        work = work_root / f"behave-{root}-{digest}"
+        work.mkdir(parents=True, exist_ok=True)
+        atomic_bytes(work / "closure.c", unit.encode())
+        atomic_bytes(work / "host_profile.h", header.encode())
+        atomic_bytes(work / "rdram.bin", host_order(before))
+        atomic_bytes(work / "cases.txt", cases_file.encode())
+        cache = None
+        if candidate is None:  # an original's events depend only on the ROM, its symbols, the closure and the cases
+            key = hashlib.sha256(
+                json.dumps(
+                    [
+                        digest,
+                        hashlib.sha256(cases_file.encode()).hexdigest(),
+                        sha256_file(settings.rom(version)),
+                        sha256_file(gen / "symbols.toml"),
+                        memory_end,
+                        depth,
+                        *(
+                            [hashlib.sha256(before).hexdigest()] if seed.get("memory") else []
+                        ),  # a seeded image is input
+                    ]
+                ).encode()
+            ).hexdigest()[:24]
+            cache = work_root / "results" / key
+            if (cache / "probe.json").is_file():
+                cached = json.loads((cache / "probe.json").read_text())
+                return {
+                    "probe": {
+                        **cached,
+                        "cached": True,
+                        "wall_seconds": round(started.seconds, 3),
+                        "replaced": replaced,
+                    },
+                    "run_id": key,
+                    "receipt": str(cache / "receipt.json"),
+                }
+        binary = work / "harness"
+        build_receipt = None
+        waited = 0.0  # seconds spent queued behind other isolated repros
+        if not binary.is_file():
+            build = [
+                str(config.get("cc", "cc")),
+                *config.get("cflags", ["-O1", "-w", "-std=gnu17"]),
+                "-I",
+                str(host / "behave"),
+                "-I",
+                str(host / "probe"),
+                "-I",
+                str(work),
+                "-I",
+                str(profile.resolve_path(config["runtime_include"])),
+                str(work / "closure.c"),
+                str(host / "behave" / "harness.c"),
+                str(host / "addrmap.c"),
+                "-o",
+                str(binary),
+                "-lm",
+            ]
+            built = run_command(
+                profile, name=f"behave {root} build", function=root, command=build, artifacts=[work / "closure.c"]
+            )
+            build_receipt = built["receipt"]
+            waited += built["status"]["lock_wait_seconds"]
+            if built["status"]["phase"] != "passed":
+                raise TasteError("repro.failed", f"behave build failed; receipt: {build_receipt}")
+        ran = run_command(
+            profile,
+            name=f"behave {root} run",
+            function=root,
+            command=[str(binary), str(work / "rdram.bin"), str(work / "cases.txt"), "."],
+            artifacts=[Path("events.txt")],
+        )
+        waited += ran["status"]["lock_wait_seconds"]
+        run_dir = Path(ran["status"]["run_dir"])
+        if ran["status"]["phase"] != "passed":
+            raise TasteError("repro.failed", f"behave run failed; receipt: {ran['receipt']}")
+        events_file = run_dir / "events.txt"
+        max_events = int(config_repro.get("behave_max_events_mb", _MAX_EVENTS_MB)) * 1024 * 1024
+        events_size = events_file.stat().st_size
+        if events_size > max_events:
+            for bulk in (events_file, *run_dir.glob("artifacts/*events.txt")):
+                bulk.unlink(missing_ok=True)
+            raise TasteError(
+                "repro.too_large",
+                f"behave events are {events_size >> 20} MB (cap {max_events >> 20} MB): "
+                "lower event_budget or split the "
+                f"cases; "
+                f"receipt: {ran['receipt']}",
+            )
+        results = parse_events(events_file.read_text())
+        # cases.json holds every event; the raw text is a copy
         for bulk in (events_file, *run_dir.glob("artifacts/*events.txt")):
             bulk.unlink(missing_ok=True)
-        raise TasteError(
-            "repro.too_large",
-            f"behave events are {events_size >> 20} MB (cap {max_events >> 20} MB): lower event_budget or split the "
-            f"cases; "
-            f"receipt: {ran['receipt']}",
-        )
-    results = parse_events(events_file.read_text())
-    # cases.json holds every event; the raw text is a copy
-    for bulk in (events_file, *run_dir.glob("artifacts/*events.txt")):
-        bulk.unlink(missing_ok=True)
-    for result, item in zip(results, cases, strict=True):
-        result["inputs"] = {k: item[k] for k in ("registers", "stack", "stub_v0") if k in item}
-        if item.get("memory"):
-            result["inputs"]["memory"] = echo_patches(item["memory"])
-        if item.get("stub_calls"):
-            result["inputs"]["stub_calls"] = len(stub_calls(item, 0))
-    probe_dir = run_dir / "probe"
-    cases_path = probe_dir / "cases.json"
-    cache_cases = cache / "cases.json" if cache is not None else None
-    cache_ok = cache_cases is not None
-    if cache_cases is not None:  # one copy, in the cache: the run record points there
-        atomic_json(cache_cases, results, sort_keys=True, compact=True)
-        if cache_cases.stat().st_size > int(config_repro.get("behave_max_cache_mb", _MAX_CACHE_ENTRY_MB)) * 1024 * 1024:
-            cache_cases.replace(cases_path)  # too big to keep cached: it lives and dies with the run dir
-            cache_ok = False
+        for result, item in zip(results, cases, strict=True):
+            result["inputs"] = {k: item[k] for k in ("registers", "stack", "stub_v0") if k in item}
+            if item.get("memory"):
+                result["inputs"]["memory"] = echo_patches(item["memory"])
+            if item.get("stub_calls"):
+                result["inputs"]["stub_calls"] = len(stub_calls(item, 0))
+        probe_dir = run_dir / "probe"
+        cases_path = probe_dir / "cases.json"
+        cache_cases = cache / "cases.json" if cache is not None else None
+        cache_ok = cache_cases is not None
+        if cache_cases is not None:  # one copy, in the cache: the run record points there
+            atomic_json(cache_cases, results, sort_keys=True, compact=True)
+            if (
+                cache_cases.stat().st_size
+                > int(config_repro.get("behave_max_cache_mb", _MAX_CACHE_ENTRY_MB)) * 1024 * 1024
+            ):
+                cache_cases.replace(cases_path)  # too big to keep cached: it lives and dies with the run dir
+                cache_ok = False
+            else:
+                cases_path = cache_cases
         else:
-            cases_path = cache_cases
-    else:
-        atomic_json(cases_path, results, sort_keys=True, compact=True)
-    statuses: dict[str, int] = {}
-    fpu_exceptions: dict[str, int] = {}
-    for result in results:
-        statuses[result["status"]] = statuses.get(result["status"], 0) + 1
-        for exception in (result.get("fpu") or {}).get("exceptions", []):
-            fpu_exceptions[exception] = fpu_exceptions.get(exception, 0) + 1
-    record = {
-        "schema": 1,
-        "kind": "cases",
-        "function": target,
-        "root": root,
-        "vram": f"{entry:#010x}",
-        "candidate_sha256": candidate_sha,
-        "input_sha256": sha256_file(script),
-        "closure": sorted(found.bodies),
-        "stubs": found.stubs,
-        "spilled": sorted(found.spilled),
-        "indirect": found.indirect,
-        "depth": depth,
-        "seeded_ranges": len(seeded),
-        "seed_memory": [
-            {"addr": item["addr"], "sha256": item.get("sha256") or sha256_bytes(_payload(item, 0))}
-            for item in seed.get("memory", [])
-        ],
-        "cases": len(results),
-        "event_budget": event_budget,
-        "lenient": bool(request.get("lenient")),
-        "lenient_reason": request.get("lenient_reason") if request.get("lenient") else None,
-        "events_max": max((r.get("events_written", 0) for r in results), default=0),
-        "statuses": statuses,
-        "fpu_exceptions": fpu_exceptions,
-        "guest_exception_enables": "unmodeled",
-        "cases_path": str(cases_path),
-        "cases_sha256": sha256_file(cases_path),
-        "build_receipt": build_receipt,
-        "wall_seconds": round(time.monotonic() - started, 3),
-        "lock_wait_seconds": round(waited, 3),
-        "sp": sp,
-        "stack_window": window,
-        "replaced": replaced,
-        "cached": False,
-        "checked": None,
-        "differences": None,
-    }
-    atomic_json(run_dir / "probe.json", record, sort_keys=True)
-    if cache is not None and cache_ok:
-        atomic_json(cache / "probe.json", record, sort_keys=True)
-        atomic_bytes(cache / "receipt.json", Path(ran["receipt"]).read_bytes())
-        prune_cache(cache.parent, cache, int(float(config_repro.get("behave_cache_gb", _CACHE_GB)) * (1 << 30)))
-    elif cache is not None:
-        shutil.rmtree(cache, ignore_errors=True)
-    return {"probe": record, "run_id": run_dir.name, "receipt": ran["receipt"]}
+            atomic_json(cases_path, results, sort_keys=True, compact=True)
+        statuses: dict[str, int] = {}
+        fpu_exceptions: dict[str, int] = {}
+        for result in results:
+            statuses[result["status"]] = statuses.get(result["status"], 0) + 1
+            for exception in (result.get("fpu") or {}).get("exceptions", []):
+                fpu_exceptions[exception] = fpu_exceptions.get(exception, 0) + 1
+        record = {
+            "schema": 1,
+            "kind": "cases",
+            "function": target,
+            "root": root,
+            "vram": f"{entry:#010x}",
+            "candidate_sha256": candidate_sha,
+            "input_sha256": sha256_file(script),
+            "closure": sorted(found.bodies),
+            "stubs": found.stubs,
+            "spilled": sorted(found.spilled),
+            "indirect": found.indirect,
+            "depth": depth,
+            "seeded_ranges": len(seeded),
+            "seed_memory": [
+                {"addr": item["addr"], "sha256": item.get("sha256") or sha256_bytes(_payload(item, 0))}
+                for item in seed.get("memory", [])
+            ],
+            "cases": len(results),
+            "event_budget": event_budget,
+            "lenient": bool(request.get("lenient")),
+            "lenient_reason": request.get("lenient_reason") if request.get("lenient") else None,
+            "events_max": max((r.get("events_written", 0) for r in results), default=0),
+            "statuses": statuses,
+            "fpu_exceptions": fpu_exceptions,
+            "guest_exception_enables": "unmodeled",
+            "cases_path": str(cases_path),
+            "cases_sha256": sha256_file(cases_path),
+            "build_receipt": build_receipt,
+            "wall_seconds": round(started.seconds, 3),
+            "lock_wait_seconds": round(waited, 3),
+            "sp": sp,
+            "stack_window": window,
+            "replaced": replaced,
+            "cached": False,
+            "checked": None,
+            "differences": None,
+        }
+        atomic_json(run_dir / "probe.json", record, sort_keys=True)
+        if cache is not None and cache_ok:
+            atomic_json(cache / "probe.json", record, sort_keys=True)
+            atomic_bytes(cache / "receipt.json", Path(ran["receipt"]).read_bytes())
+            prune_cache(cache.parent, cache, int(float(config_repro.get("behave_cache_gb", _CACHE_GB)) * (1 << 30)))
+        elif cache is not None:
+            shutil.rmtree(cache, ignore_errors=True)
+        return {"probe": record, "run_id": run_dir.name, "receipt": ran["receipt"]}

@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from abucache import stages as cache_stages
+
 from cake_taste.files import atomic_json, sha256_file
 from cake_taste.logs.events import append_event
 
@@ -119,9 +121,8 @@ def run_command(
     lock_path = _path(profile, "lock_path")
     root.mkdir(parents=True, exist_ok=True)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    waiting = time.monotonic()
-    with _held(lock_path, slots):
-        waited = round(time.monotonic() - waiting, 3)
+    with cache_stages.timed("cake_taste.repro.runner.run_command.waiting") as waiting, _held(lock_path, slots):
+        waited = round(waiting.seconds, 3)
         run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         run_dir = root / run_id
         for twin in range(1, 1000):  # parallel slot runs may start in the same microsecond
