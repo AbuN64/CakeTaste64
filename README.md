@@ -72,3 +72,8 @@ The CI environment is private to the checkout. `ci/ensure_venv.py` resolves the 
 `tool.bootstrap.sources` to their landed revisions before installing dependencies. Its reuse key includes
 `pyproject.toml` and every resolved requirement; a new AbuCache64 revision forces a fresh environment.
 Bootstrap uses the standard library and does not import or borrow the installed toolkit.
+
+The rig deploy (`ci/deploy_rig.py`) runs its suite under that same private environment and installs every declared
+dependency, `abucache` included, plus the pinned `[dev]` extra into the deploy toolkit; no package is installed by hand
+on the rig. `tests/test_declared_dependencies.py` fails when src or ci import a third-party module `pyproject.toml`
+does not declare.

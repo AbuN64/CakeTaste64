@@ -4,19 +4,23 @@ them in file order on the rig at the landed revision, from the root of the tree,
 LANDED_Projects_AbuN64_CakeTaste64 set and `deploy-env TOOLKIT=<live link>` in the environment; it appends its own
 landing arguments, which no step reads. A step prints its facts and exits 0, or prints one line on stderr and exits 1;
 it calls no other tool of the close. CakeTaste64 activates two links, both its own: the live oracle and its dev
-toolkit (the live link `deploy-env TOOLKIT=` names, which no other repository names). The toolkit holds the pinned
-`[dev]` extra of pyproject.toml and its one command, `ruff`, is published by name into the one command directory
+toolkit (the live link `deploy-env TOOLKIT=` names, which no other repository names). The toolkit holds every
+requirement of pyproject.toml, its `dependencies` (abucache, installed at the commit its `[tool.bootstrap.sources]`
+repository holds when the toolkit is built) and the pinned `[dev]` extra, and its one command, `ruff`, is published by name into the one command directory
 `commands` beside the toolkit link (the directory the rig job PATH holds); the gate does not call it, it builds its
 own venv from `[dev]`. Exactly one toolkit publishes a given name: AbuDecomp64 publishes `decomp` and CakeUnbake64
 `unbake` and `unbake-run`, never `ruff`. The decomp toolkit link is AbuDecomp64's and the unbake toolkit
 CakeUnbake64's: this deploy never activates them, and the oracle recompile imports cake_taste from the tree, never
 from a toolkit.
 
-  suite      the full test suite (unittest discover over tests/) runs in the tree with its src first on the import path.
+  suite      the full test suite (unittest discover over tests/) runs in the tree with its src first on the import path,
+             under the python of the tree's private venv (ci/ensure_venv.py: every dependency installed, abucache
+             included; never the system python, which holds none of them).
              The imported cake_taste path is printed and must lie inside the tree. Any failure refuses (one line naming
              the first failing test) with every live link untouched;
-  toolkit    the toolkit activation (BUILD is <toolkit>.<SHA>): a fresh venv at BUILD gets the `[dev]` extra of the
-             tree's pyproject.toml (every requirement an exact pin) and each installed version must equal its pin.
+  toolkit    the toolkit activation (BUILD is <toolkit>.<SHA>): a fresh venv at BUILD gets the `dependencies` and the `[dev]`
+             extra of the tree's pyproject.toml (every requirement an exact pin or a source at its landed commit) and
+             each installed version must equal its pin, each source must read back at its commit.
              Only on exit 0 does the close flip the toolkit link; a failed build removes BUILD, and a build that is the
              live target already is a no-op;
   oracle     the oracle activation (BUILD is <oracle>.<SHA>): builds n64host into BUILD (pinned deps copied from
@@ -34,7 +38,7 @@ from a toolkit.
              the pinned sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name
              osPiStartDma;
              then the self-check again through the live link;
-  commands   the live toolkit link must read <toolkit>.<SHA> with every pin installed. Then each command (`ruff`) is
+  commands   the live toolkit link must read <toolkit>.<SHA> with every requirement installed. Then each command (`ruff`) is
              linked by name into the command directory, through the live link (so it follows every later switch), and
              read back: it resolves into the live toolkit. The deploy removes nothing.
 
@@ -45,6 +49,7 @@ from a toolkit.
   rig run ci/deploy_rig.py readback
   rig run ci/deploy_rig.py commands"""
 
+import importlib.util
 import os
 import re
 import subprocess
@@ -59,6 +64,8 @@ RAGEWARS_LOCAL = "$HOME/code/ragewars-decomp"
 COMMANDS = "commands"  # the command directory beside the toolkit link
 PUBLISHED = ("ruff",)  # this repository's toolkit command; decomp, unbake and unbake-run are other repositories'
 PIN = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;,<>=!~]+)")
+SOURCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]* @ git\+\S+@[0-9a-f]{40}")  # a requirement ensure_venv resolved
+ENSURE_VENV = "ci/ensure_venv.py"  # the tree's private venv: every dependency of pyproject.toml, abucache included
 RECOMP_PROFILE = "/home/abu/rig-state/behave/taste-profile.json"
 VERSION = "us-rev1"
 PACKAGE = "cake_taste"
@@ -290,17 +297,28 @@ if failed or not passed:
 """
 
 
-# PINCHECK_TOOLKIT REQUIREMENT...: run by a toolkit's own python, each `name==version` requirement installed at exactly
-# that version, one `toolkit-pin: name version` line per requirement.
+# PINCHECK_TOOLKIT REQUIREMENT...: run by a toolkit's own python, each requirement installed, one `toolkit-pin: name
+# version` line per requirement. `name==version` must be installed at exactly that version, `name @ git+URL@SHA` at
+# exactly that commit, and a bare `name` only installed.
 PINCHECK_TOOLKIT = r"""import importlib.metadata
+import json
+import re
 import sys
 
 for requirement in sys.argv[1:]:
-    name, _, pinned = requirement.partition("==")
+    found = re.fullmatch(r"([A-Za-z0-9][A-Za-z0-9._-]*)(?:==(\S+)| @ git\+\S+@([0-9a-f]{40}))?", requirement)
+    if not found:
+        sys.exit(f"toolkit: {requirement!r} is not name, name==version or name @ git+URL@SHA")
+    name, pinned, commit = found.groups()
     installed = importlib.metadata.version(name)
     print(f"toolkit-pin: {name} {installed}")
-    if installed != pinned:
+    if pinned and installed != pinned:
         sys.exit(f"toolkit: {name} is {installed}, pyproject pins {pinned}")
+    if commit:
+        direct = json.loads(importlib.metadata.distribution(name).read_text("direct_url.json") or "{}")
+        at = direct.get("vcs_info", {}).get("commit_id")
+        if at != commit:
+            sys.exit(f"toolkit: {name} is at {at}, its source resolved to {commit}")
 """
 
 # TOOLKIT_BUILD TOOLKIT REQUIREMENT...: the toolkit activation, run in the tree with BUILD (<toolkit>.<sha>) set by the
@@ -383,14 +401,30 @@ def commands(toolkit: str) -> str:
     return os.path.join(os.path.dirname(toolkit), COMMANDS)
 
 
-def dev_requirements(root: Path) -> list[str]:
-    """The `[dev]` extra of the tree's pyproject.toml: the one list the toolkit installs, every entry an exact pin."""
-    with open(root / "pyproject.toml", "rb") as handle:
-        found = tomllib.load(handle).get("project", {}).get("optional-dependencies", {}).get("dev", [])
-    loose = [requirement for requirement in found if not PIN.fullmatch(requirement)]
+def toolkit_requirements(root: Path, lookup: Callable | None = None) -> list[str]:
+    """Every requirement the toolkit installs: the `dependencies` and the `[dev]` extra of the tree's pyproject.toml,
+    each source dependency resolved by ci/ensure_venv.py to its landed commit and every other entry an exact pin."""
+    spec = importlib.util.spec_from_file_location("ensure_venv", root / ENSURE_VENV)
+    if spec is None or spec.loader is None:
+        raise Refused(f"{ENSURE_VENV} is missing in {root}")
+    bootstrap = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bootstrap)
+    try:
+        found = bootstrap.requirements(root, lookup)
+    except RuntimeError as failure:
+        raise Refused(str(failure)) from failure
+    loose = [row for row in found if not (PIN.fullmatch(row) or SOURCE.fullmatch(row))]
     if loose or not found:
-        raise Refused(f"the [dev] extra of pyproject.toml must pin every requirement with ==: {loose or 'it is empty'}")
-    return list(found)
+        raise Refused(f"pyproject.toml must pin every requirement with == or give it a source: {loose or 'it is empty'}")
+    return found
+
+
+def installed_requirements(root: Path) -> list[str]:
+    """The same list without a network lookup, for the readback: a pin as pinned, a source dependency by its name."""
+    with open(root / "pyproject.toml", "rb") as handle:
+        project = tomllib.load(handle).get("project", {})
+    rows = [*project.get("dependencies", []), *project.get("optional-dependencies", {}).get("dev", [])]
+    return [row if PIN.fullmatch(row) else re.split(r"[\s=<>!~;@\[]", row, maxsplit=1)[0] for row in rows]
 
 
 def publish(toolkit: str) -> list[str]:
@@ -410,7 +444,11 @@ def publish(toolkit: str) -> list[str]:
 
 
 def step_suite(sha: str, toolkit: str, run: Bash) -> None:
-    code, out = run(SUITE.replace("__RUNNER__", RUNNER), PYTHON, capture=True)
+    code, out = run(r'exec "$1" "$2"', PYTHON, ENSURE_VENV, capture=True)
+    python = last_line(out, "")
+    if code or not python.startswith("/"):
+        raise Refused(f"suite environment ({ENSURE_VENV}) exit {code}: {python or 'no output'}")
+    code, out = run(SUITE.replace("__RUNNER__", RUNNER), python, capture=True)
     sys.stdout.write(out)
     found = facts(out, "suite-")
     for key in ("suite-checkout", "suite-sha", "suite-import"):
@@ -428,7 +466,7 @@ def step_suite(sha: str, toolkit: str, run: Bash) -> None:
 
 
 def step_toolkit(sha: str, toolkit: str, run: Bash) -> None:
-    code, _ = run(TOOLKIT_BUILD, toolkit, *dev_requirements(Path.cwd()))
+    code, _ = run(TOOLKIT_BUILD, toolkit, *toolkit_requirements(Path.cwd()))
     if code:
         raise Refused(f"toolkit build exit {code}, links unchanged")
 
@@ -454,7 +492,7 @@ def step_readback(sha: str, toolkit: str, run: Bash) -> None:
 
 
 def step_commands(sha: str, toolkit: str, run: Bash) -> None:
-    code, out = run(TOOLKIT_READBACK, toolkit, f"{toolkit}.{sha}", *dev_requirements(Path.cwd()), capture=True)
+    code, out = run(TOOLKIT_READBACK, toolkit, f"{toolkit}.{sha}", *installed_requirements(Path.cwd()), capture=True)
     sys.stdout.write(out)
     if code:
         raise Refused(f"toolkit readback exit {code}: {last_line(out, 'no output')}")

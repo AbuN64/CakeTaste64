@@ -14,9 +14,11 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path, PurePosixPath
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "ci/deploy_rig.py"
+ENSURE = "ci/ensure_venv.py"
 spec = importlib.util.spec_from_file_location("deploy_rig", SCRIPT)
 deploy_rig = importlib.util.module_from_spec(spec)
 sys.modules["deploy_rig"] = deploy_rig
@@ -469,6 +471,37 @@ chmod +x "$3/bin/python"
             self.assertEqual((done.returncode, "live already" in done.stdout), (0, True))
 
 
+class ToolkitPinCheck(unittest.TestCase):
+    """PINCHECK_TOOLKIT run for real by a python that sees one fake installed distribution built from a git source."""
+
+    def check(self, *requirements):
+        with tempfile.TemporaryDirectory() as raw:
+            info = Path(raw) / "fakecache-1.2.dist-info"
+            info.mkdir()
+            (info / "METADATA").write_text("Metadata-Version: 2.1\nName: fakecache\nVersion: 1.2\n")
+            (info / "direct_url.json").write_text(
+                json.dumps({"url": "https://example.lan/c", "vcs_info": {"vcs": "git", "commit_id": SHA}})
+            )
+            done = subprocess.run(
+                [sys.executable, "-c", deploy_rig.PINCHECK_TOOLKIT, *requirements],
+                env={"PYTHONPATH": raw}, capture_output=True, text=True, check=False,
+            )
+        return done.returncode, done.stdout + done.stderr
+
+    def test_a_pin_a_source_commit_and_a_bare_name_are_each_read_back(self):
+        source = f"fakecache @ git+https://example.lan/c@{SHA}"
+        code, out = self.check("fakecache==1.2", source, "fakecache")
+        self.assertEqual((code, out.count("toolkit-pin: fakecache 1.2")), (0, 3), out)
+        for requirement, needle in (
+            ("fakecache==1.3", "pyproject pins 1.3"),
+            (f"fakecache @ git+https://example.lan/c@{NEWER}", "its source resolved to"),
+            ("nosuchdist", "nosuchdist"),
+            ("fakecache>=1", "is not name"),
+        ):
+            code, out = self.check(requirement)
+            self.assertEqual((code != 0, needle in out), (True, True), (requirement, out))
+
+
 class FakeRun:
     """The bash seam: answers each script with the next scripted (exit code, stdout) and records the calls."""
 
@@ -534,19 +567,45 @@ class Steps(unittest.TestCase):
         code, _, err = step(["oracle"], FakeRun((1, "")))
         self.assertEqual((code, "oracle build exit 1, links unchanged" in err), (1, True))
 
-    def test_toolkit_installs_the_pinned_dev_extra_of_the_tree_and_a_failed_build_refuses(self):
-        run = FakeRun((0, ""))
-        self.assertEqual(step(["toolkit"], run)[0], 0)
-        self.assertEqual(run.calls[0][:2], (deploy_rig.TOOLKIT_BUILD, (TOOLKIT, "ruff==0.16.9")))
-        code, _, err = step(["toolkit"], FakeRun((1, "")))
+    def test_toolkit_installs_the_dependencies_and_pinned_dev_extra_of_the_tree_and_a_failed_build_refuses(self):
+        rows = [f"abucache @ git+https://example.lan/cache-64@{SHA}", "ruff==0.16.9"]
+        with mock.patch.object(deploy_rig, "toolkit_requirements", return_value=rows):
+            run = FakeRun((0, ""))
+            self.assertEqual(step(["toolkit"], run)[0], 0)
+            self.assertEqual(run.calls[0][:2], (deploy_rig.TOOLKIT_BUILD, (TOOLKIT, *rows)))
+            code, _, err = step(["toolkit"], FakeRun((1, "")))
         self.assertEqual((code, "toolkit build exit 1, links unchanged" in err), (1, True))
+
+    def test_the_toolkit_requirements_are_the_dependencies_resolved_to_their_commit_and_the_dev_pins(self):
+        seen = []
+
+        def lookup(argv, cwd):
+            seen.append(argv)
+            return 0, SHA + "\tHEAD\n"
+
+        rows = deploy_rig.toolkit_requirements(ROOT, lookup)
+        self.assertEqual(rows[0], f"abucache @ git+{seen[0][2]}@{SHA}")
+        self.assertEqual(rows[1:], ["ruff==0.16.9"])
+        self.assertEqual(deploy_rig.installed_requirements(ROOT), ["abucache", "ruff==0.16.9"])
+        with tempfile.TemporaryDirectory() as raw:
+            tree = Path(raw)
+            (tree / "ci").mkdir()
+            (tree / "ci/ensure_venv.py").write_bytes((ROOT / ENSURE).read_bytes())
+            (tree / "pyproject.toml").write_text(
+                '[project]\ndependencies = ["requests>=2"]\n[project.optional-dependencies]\ndev = ["ruff==1"]\n'
+                "[tool.bootstrap.sources]\n"
+            )
+            with self.assertRaisesRegex(deploy_rig.Refused, "requests>=2"):
+                deploy_rig.toolkit_requirements(tree, lookup)
+            with self.assertRaisesRegex(deploy_rig.Refused, "ls-remote"):
+                deploy_rig.toolkit_requirements(ROOT, lambda argv, cwd: (128, "offline"))
 
     def test_commands_reads_the_toolkit_back_then_publishes_ruff_by_name(self):
         with Host() as host:
             run = FakeRun((0, "toolkit-pin: ruff 0.16.9\n"))
             code, out, _ = step(["commands"], run, host.environ)
             self.assertEqual(code, 0, out)
-            args = (host.toolkit, f"{host.toolkit}.{SHA}", "ruff==0.16.9")
+            args = (host.toolkit, f"{host.toolkit}.{SHA}", "abucache", "ruff==0.16.9")
             self.assertEqual(run.calls[0][:2], (deploy_rig.TOOLKIT_READBACK, args))
             self.assertIn(f"publish: ruff -> {host.commands}", out)
             self.assertEqual(os.readlink(host.commands / "ruff"), f"{host.toolkit}/bin/ruff")
@@ -572,8 +631,19 @@ class Steps(unittest.TestCase):
         ):
             self.assertEqual(step(["readback"], FakeRun((code, log)))[0], 1, log)
 
+    def test_the_suite_runs_under_the_python_of_the_trees_private_venv_never_the_system_python(self):
+        venv = f"{CHECKOUT}/.venv/bin/python"
+        run = FakeRun((0, f"{venv}\n"), (0, suite_log()))
+        self.assertEqual(step(["suite"], run)[0], 0)
+        self.assertEqual(run.calls[0][1], (deploy_rig.PYTHON, deploy_rig.ENSURE_VENV))
+        self.assertEqual(run.calls[1][1], (venv,))
+        for answer in ((1, ""), (0, ""), (1, "venv: pip failed")):
+            run = FakeRun(answer)
+            code, _, err = step(["suite"], run)
+            self.assertEqual((code, "suite environment" in err, len(run.calls)), (1, True, 1), err)
+
     def test_the_suite_step_accepts_a_clean_suite_and_names_every_refusal(self):
-        self.assertEqual(step(["suite"], FakeRun((0, suite_log())))[0], 0)
+        self.assertEqual(step(["suite"], FakeRun((0, "/venv/bin/python"), (0, suite_log())))[0], 0)
         cases = (
             ((1, suite_log(failed="test_x (t.T)")), "test_x (t.T)"),
             ((0, suite_log(imported="/elsewhere/cake_taste/__init__.py")), "outside its checkout"),
@@ -583,7 +653,7 @@ class Steps(unittest.TestCase):
             ((1, suite_log().replace("suite-summary", "x")), "no summary"),
         )
         for answer, needle in cases:
-            code, _, err = step(["suite"], FakeRun(answer))
+            code, _, err = step(["suite"], FakeRun((0, "/venv/bin/python"), answer))
             self.assertEqual((code, needle in err), (1, True), (answer, err))
 
 
