@@ -161,11 +161,13 @@ class Shape(unittest.TestCase):
     def test_recompile_sh_runs_its_steps_in_order_and_stops_on_an_unnamed_address(self):
         text = (ROOT / "hosts/n64recomp/recompile.sh").read_text()
         steps = ['cmake --build "$build/deps/N64Recomp/build"', 'sh "$src/hosts/n64recomp/decomp_elf.sh"',
-                 'python3 "$src/hosts/n64recomp/recomp_profile.py"', "python3 -m cake_taste", 'test -z "$unnamed"',
+                 'python3 "$src/hosts/n64recomp/recomp_profile.py"', '/bin/python" -m cake_taste', 'test -z "$unnamed"',
                  'echo "func_names=0"']
         at = [text.index(step) for step in steps]
         self.assertEqual(at, sorted(at))
         self.assertIn('echo "$unnamed" >&2; exit 1', text)
+        self.assertIn('"${TOOLKIT:?', text)  # the toolkit python holds abucache; the system python3 holds none
+        self.assertNotIn("python3 -m cake_taste", text)
         self.assertIn("(func|asm|entry)_[0-9A-Fa-f]{8}", text)
         self.assertEqual(subprocess.run(["sh", "-n", str(ROOT / "hosts/n64recomp/recompile.sh")]).returncode, 0)
 

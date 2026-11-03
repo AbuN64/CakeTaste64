@@ -1,7 +1,8 @@
 #!/bin/sh
 # recompile.sh BUILD SRC URL LOCAL PROFILE VERSION: the gen dir BUILD/recomp/VERSION, every function named by
 # the decomp.
-# Run from the CakeTaste64 checkout SRC after deps.sh put the patched N64Recomp in BUILD/deps. JOBS is Dos's width.
+# Run from the CakeTaste64 checkout SRC after deps.sh put the patched N64Recomp in BUILD/deps. JOBS is Dos's width;
+# TOOLKIT is the live toolkit link, whose python holds every dependency (abucache) while cake_taste comes from SRC.
 #   1. N64Recomp and RSPRecomp built at the PINS commit with this host's patches;
 #   2. the decomp ELF of the PINS RageWars commit (decomp_elf.sh, URL, ROMs from LOCAL, local.mk from the unbake
 #      command) in BUILD/decomp;
@@ -17,7 +18,7 @@ cmake --build "$build/deps/N64Recomp/build" -j"${JOBS:?JOBS is set by Job Invoke
 RAGEWARS_LOCAL=$local_dir sh "$src/hosts/n64recomp/decomp_elf.sh" "$url" "$build/decomp" "$version"
 mkdir "$build/taste-run"
 python3 "$src/hosts/n64recomp/recomp_profile.py" "$profile" "$build" > "$build/taste-profile.json"
-PYTHONPATH="$src/src" python3 -m cake_taste --profile "$build/taste-profile.json" recomp generate --version "$version"
+PYTHONPATH="$src/src" "${TOOLKIT:?TOOLKIT is the live toolkit link (deploy-env)}/bin/python" -m cake_taste --profile "$build/taste-profile.json" recomp generate --version "$version"
 gen=$build/recomp/$version
 names='(func|asm|entry)_[0-9A-Fa-f]{8}[A-Za-z0-9_]*'
 unnamed=$( (grep -hoE "$names" "$gen/symbols.toml"; grep -rhoE "$names" "$gen/funcs") | sort -u || true)

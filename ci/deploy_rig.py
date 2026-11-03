@@ -11,7 +11,7 @@ repository holds when the toolkit is built) and the pinned `[dev]` extra, and it
 own venv from `[dev]`. Exactly one toolkit publishes a given name: AbuDecomp64 publishes `decomp` and CakeUnbake64
 `unbake` and `unbake-run`, never `ruff`. The decomp toolkit link is AbuDecomp64's and the unbake toolkit
 CakeUnbake64's: this deploy never activates them, and the oracle recompile imports cake_taste from the tree, never
-from a toolkit.
+from a toolkit, and runs it under the live toolkit's python (TOOLKIT), which holds abucache.
 
   suite      the full test suite (unittest discover over tests/) runs in the tree with its src first on the import path,
              under the python of the tree's private venv (ci/ensure_venv.py: every dependency installed, abucache
