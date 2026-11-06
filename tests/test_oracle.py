@@ -75,15 +75,13 @@ class Refusals(unittest.TestCase):
         git(tmp / "repo", "init", "-q")
         return tmp / "repo"
 
-    def run_oracle(self, repo: Path, *args: str) -> subprocess.CompletedProcess:
-        env = {"PATH": os.environ["PATH"]}
+    def run_oracle(self, repo: Path, *args: str, **extra: str) -> subprocess.CompletedProcess:
+        env = {"PATH": os.environ["PATH"], **extra}
         argv = ["sh", str(repo / "ci/oracle"), *args]
         return subprocess.run(argv, capture_output=True, text=True, env=env, check=False)
 
-    def test_the_selfcheck_refuses_a_host_that_exits_0_without_writing_the_state_hash(self):
-        """A host stopped by a signal can exit 0 with state-oracle.txt empty; two empty files hash equal and
-        passed the check."""
-        repo = self.tree()
+    def selfcheck_inputs(self, repo: Path) -> tuple[Path, dict[str, str]]:
+        """A host that exits 0 without a state hash, a lavapipe manifest in the data dirs, a private TMPDIR."""
         decomp = repo.parent / "RageWarsDecomp/roms"
         decomp.mkdir(parents=True)
         (decomp / "baserom.us-rev1.z64").write_bytes(b"rom")
@@ -92,7 +90,49 @@ class Refusals(unittest.TestCase):
         (host.parent / "gen/symbol_addrs.txt").write_text("gMain = 0x80001000; // type:func\n")
         host.write_text("#!/bin/sh\nexit 0\n")
         host.chmod(0o755)
-        done = self.run_oracle(repo, "selfcheck", str(host))
+        icd = repo.parent / "data/vulkan/icd.d"
+        icd.mkdir(parents=True)
+        (icd / "other_icd.json").write_text('{"ICD": {"library_path": "libother.so"}}')
+        (icd / "lvp_icd.json").write_text('{"ICD": {"library_path": "libvulkan_lvp.so"}}')
+        tmp = repo.parent / "tmp"
+        tmp.mkdir()
+        return host, {"XDG_DATA_DIRS": str(repo.parent / "data"), "TMPDIR": str(tmp)}
+
+    def test_the_selfcheck_removes_its_temp_folder_on_a_failing_exit(self):
+        repo = self.tree()
+        host, env = self.selfcheck_inputs(repo)
+        done = self.run_oracle(repo, "selfcheck", str(host), **env)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("wrote no state hash", done.stderr)
+        self.assertEqual(list(Path(env["TMPDIR"]).iterdir()), [])
+
+    def test_the_selfcheck_refuses_naming_lavapipe_when_no_manifest_names_it(self):
+        repo = self.tree()
+        host, env = self.selfcheck_inputs(repo)
+        (repo.parent / "data/vulkan/icd.d/lvp_icd.json").unlink()
+        done = self.run_oracle(repo, "selfcheck", str(host), **env)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("no Vulkan ICD manifest naming lvp", done.stderr)
+        self.assertEqual(list(Path(env["TMPDIR"]).iterdir()), [])
+
+    def test_the_build_refuses_a_missing_declared_compiler_naming_it_and_its_major(self):
+        repo = self.tree()
+        (repo / "hosts/n64recomp").mkdir(parents=True)
+        (repo / "hosts/n64recomp/TOOLCHAIN").write_text("gcc_major=99\n")
+        (repo.parent / "RageWarsDecomp/.git").mkdir(parents=True)
+        (repo.parent / "RageWarsDecomp/roms").mkdir()
+        (repo.parent / "RageWarsDecomp/roms/baserom.us-rev1.z64").write_bytes(b"rom")
+        done = self.run_oracle(repo, "build")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("gcc-99 is missing from PATH", done.stderr)
+        self.assertIn("GCC major 99", done.stderr)
+
+    def test_the_selfcheck_refuses_a_host_that_exits_0_without_writing_the_state_hash(self):
+        """A host stopped by a signal can exit 0 with state-oracle.txt empty; two empty files hash equal and
+        passed the check."""
+        repo = self.tree()
+        host, env = self.selfcheck_inputs(repo)
+        done = self.run_oracle(repo, "selfcheck", str(host), **env)
         self.assertEqual(done.returncode, 1)
         self.assertIn("wrote no state hash", done.stderr)
         self.assertNotIn("readback-hash", done.stdout)

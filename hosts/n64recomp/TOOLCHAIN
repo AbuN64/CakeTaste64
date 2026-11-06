@@ -1,0 +1,3 @@
+# The C/C++ compiler major the n64host and N64Recomp builds need (gcc-N and g++-N, found on PATH by ci/oracle).
+# 14: the generated functions need the refused_decls.h force-include (4f3545c), written for gcc 14.
+gcc_major=14

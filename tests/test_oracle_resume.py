@@ -74,6 +74,7 @@ class Resume(unittest.TestCase):
         for name in ("checkout.sh", "decomp_elf.sh", "recomp_profile.py", "ragewars.profile.json"):
             script(n / name, "x\n")
         script(n / "kept_audit.py", "pass\n")  # the audit of the kept libultra originals, run on the generated funcs
+        (n / "TOOLCHAIN").write_text("gcc_major=14\n")
         (n / "PINS").write_text("RageWars abc\n")
         (n / "patches").mkdir()
         (n / "patches/a.diff").write_text("d\n")
@@ -95,6 +96,8 @@ class Resume(unittest.TestCase):
         self.bin = self.tmp / "bin"
         script(self.bin / "cmake", CMAKE)
         script(self.bin / "ccache", "#!/bin/sh\n")
+        for compiler in ("gcc-14", "g++-14"):
+            script(self.bin / compiler, "#!/bin/sh\n")
         self.calls = self.tmp / "calls.log"
 
     def build(self, *, fail: bool = False, tree: Path | None = None) -> subprocess.CompletedProcess:
@@ -144,6 +147,8 @@ class Resume(unittest.TestCase):
     def test_the_host_build_goes_through_ccache_with_base_dir_and_hash_dir_in_the_launcher(self):
         self.assertEqual(self.build().returncode, 0)
         configure = next(line for line in self.calls.read_text().splitlines() if line.startswith("configure"))
+        self.assertIn(f"-DCMAKE_CXX_COMPILER={self.bin}/g++-14", configure)
+        self.assertIn(f"-DCMAKE_C_COMPILER={self.bin}/gcc-14", configure)
         self.assertIn(f"-DCMAKE_CXX_COMPILER_LAUNCHER={self.bin}/ccache;base_dir={self.repo};hash_dir=false", configure)
         self.assertIn(f"-DCMAKE_C_COMPILER_LAUNCHER={self.bin}/ccache;base_dir={self.repo};hash_dir=false", configure)
         args = next(self.repo.glob(".state/oracle-recomp/*/args")).read_text()

@@ -4,7 +4,7 @@
 # Run from the CakeTaste64 checkout SRC after deps.sh put the patched N64Recomp in DEPS (BUILD/deps links to it; the N64Recomp
 # build dir DEPS/N64Recomp/build stays between runs, so ninja resumes). Rerunnable on a BUILD a kill left half made: a finished
 # piece (the decomp ELF clone, the object files of either build) is kept, the generated tree is made again. The CMAKE_ARGs
-# (the compiler launcher) go to the N64Recomp configure. JOBS is the build width;
+# (the compiler and launcher) go to the N64Recomp configure. JOBS is the build width;
 # ROM is the cartridge dump of VERSION in DECOMP (found once by ci/oracle, handed on: the derived profile names it, never a path
 # beside the profile file, which is the worktree's); PY is the python of the tree's private venv (holds abucache), UNBAKE its unbake command and HOST the host config it is passed; cake_taste comes from SRC.
 #   1. N64Recomp and RSPRecomp built at the PINS commit with this host's patches;
@@ -18,8 +18,7 @@ build=${1:?usage: recompile.sh BUILD SRC DECOMP PROFILE VERSION ROM PY UNBAKE HO
 profile=${4:?} version=${5:?} rom=${6:?} py=${7:?} unbake=${8:?} host=${9:?} jobs=${10:?} deps=${11:?}
 shift 11
 ln -sfn "$deps" "$build/deps"
-cmake -S "$deps/N64Recomp" -B "$deps/N64Recomp/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_COMPILER=/usr/bin/gcc-14 -DCMAKE_CXX_COMPILER=/usr/bin/g++-14 "$@"
+cmake -S "$deps/N64Recomp" -B "$deps/N64Recomp/build" -G Ninja -DCMAKE_BUILD_TYPE=Release "$@"
 cmake --build "$deps/N64Recomp/build" -j"$jobs" --target N64Recomp RSPRecomp
 sh "$src/hosts/n64recomp/decomp_elf.sh" "$decomp" "$build/decomp" "$version" "$unbake" "$host" "$jobs"
 test -s "$profile" || { echo "recompile: $profile is missing; it is the project taste profile, tracked in this repository (hosts/n64recomp/ragewars.profile.json)" >&2; exit 1; }

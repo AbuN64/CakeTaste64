@@ -46,7 +46,15 @@ selfcheck() {  # HOST: boot-idle twice; the two state hashes must be equal
   for need in "$host" "$addrs" "$rom"; do
     test -e "$need" || { echo "selfcheck: $need is missing" >&2; exit 1; }
   done
+  icd=
+  for dir in $(printf %s "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" | tr : ' ') /etc; do
+    for f in "$dir"/vulkan/icd.d/*.json; do
+      test -e "$f" && grep -q '"library_path"[^,]*lvp' "$f" && { icd=$f; break 2; }
+    done
+  done
+  test -n "$icd" || { echo "selfcheck: no Vulkan ICD manifest naming lvp (lavapipe, the software driver the offscreen deterministic check needs) in the loader's vulkan/icd.d folders; install the lavapipe Vulkan driver" >&2; exit 1; }
   work=$(mktemp -d)
+  trap 'rm -rf "$work"' EXIT
   spec=$work/oracle.spec
   sed -En -e '1i ram 800000\nregion ALL' -e 's/^(\S+) = 0x(80[0-7][0-9A-Fa-f]{4}[048cC]);.*/symbol \1\nrun \2 w 1/p' "$addrs" > "$spec"
   grep -q ^symbol "$spec" || { echo "selfcheck: $addrs has no RDRAM symbol" >&2; exit 1; }
@@ -59,7 +67,7 @@ selfcheck() {  # HOST: boot-idle twice; the two state hashes must be equal
     mkdir "$out"
     (
       cd "$out"
-      export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy N64R_ROM=$rom N64R_CONFIG=$cfg VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json N64R_PAK=on N64R_PADS=1 N64R_TAS_PLAY=$movie N64R_TAS_EXIT_AFTER=300 N64R_VIEW=$out/view.bmp N64R_AUDIO_OUT=/dev/null N64R_TAS_SHOT_EVERY=0 N64R_TAS_TRACE=$out/oracle-trace.txt N64R_TAS_STATE=$spec N64R_TAS_STATE_HASH=$out/state-oracle.txt
+      export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy N64R_ROM=$rom N64R_CONFIG=$cfg VK_DRIVER_FILES=$icd N64R_PAK=on N64R_PADS=1 N64R_TAS_PLAY=$movie N64R_TAS_EXIT_AFTER=300 N64R_VIEW=$out/view.bmp N64R_AUDIO_OUT=/dev/null N64R_TAS_SHOT_EVERY=0 N64R_TAS_TRACE=$out/oracle-trace.txt N64R_TAS_STATE=$spec N64R_TAS_STATE_HASH=$out/state-oracle.txt
       unset N64R_CPAK
       "$host" > oracle.txt 2>&1 || { rc=$?; tail -n 5 oracle.txt >&2; echo "boot-idle run $n exit $rc" >&2; exit 1; }
       test -s state-oracle.txt || { tail -n 5 oracle.txt >&2; echo "boot-idle run $n exited 0 but wrote no state hash: two empty states are equal, not a check" >&2; exit 1; }
@@ -70,6 +78,7 @@ selfcheck() {  # HOST: boot-idle twice; the two state hashes must be equal
     first=$hash
   done
   rm -rf "$work"
+  trap - EXIT
 }
 
 inputs() {  # PATH...: a digest of the tracked content of the paths, the key of a step that reads them
@@ -98,7 +107,7 @@ host_build() {  # CMAKE_ARG...: configure and build the host in the shared ninja
   home=$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$state/oracle-host/CMakeCache.txt" 2>/dev/null || true)
   test -z "$home" || test "$home" = "$root/$n" || rm -f "$state/oracle-host/CMakeCache.txt"  # configured again here; objects stay
   cmake -S $n -B "$state/oracle-host" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=/usr/bin/gcc-14 -DCMAKE_CXX_COMPILER=/usr/bin/g++-14 "$@" \
+    "$@" \
     -DN64R_GEN_DIR="$gen" -DN64R_PINS="$root/$n/PINS" -DN64R_PROFILE="$facts" \
     -DN64R_REFUSED="$gen/refused.tsv" \
     -DN64R_RT64_SRC="$deps/rt64" -DN64R_RUNTIME_SRC="$deps/N64ModernRuntime" \
@@ -109,6 +118,10 @@ host_build() {  # CMAKE_ARG...: configure and build the host in the shared ninja
 build() {
   test -d "$decomp/.git" || { echo "oracle: the decomp working copy $decomp is missing; clone RageWarsDecomp beside this repository" >&2; exit 1; }
   test -e "$rom" || { echo "oracle: $rom is missing (the decomp's roms/ holds the dumps)" >&2; exit 1; }
+  major=$(sed -n 's/^gcc_major=//p' hosts/n64recomp/TOOLCHAIN)
+  for tool in gcc-$major g++-$major; do
+    command -v "$tool" > /dev/null || { echo "oracle: $tool is missing from PATH; hosts/n64recomp/TOOLCHAIN declares GCC major $major, install $tool" >&2; exit 1; }
+  done
   sha=$(git rev-parse HEAD)
   jobs=$(nproc)
   py=$(python3 ci/ensure_venv.py)
@@ -123,7 +136,7 @@ build() {
   exec 9> "$state/oracle.lock"  # the state is shared by every worktree: a second build waits here until the first exits
   flock 9
   depskey=$(inputs $n/PINS $n/patches $n/deps.sh $n/checkout.sh)
-  recompkey=$(inputs $n/PINS $n/patches $n/recompile.sh $n/decomp_elf.sh $n/recomp_profile.py $n/HOST_KEPT $n/ragewars.profile.json $n/host_config.py src pyproject.toml)-$depskey-$(wc -c < "$rom")
+  recompkey=$(inputs $n/PINS $n/patches $n/recompile.sh $n/TOOLCHAIN $n/decomp_elf.sh $n/recomp_profile.py $n/HOST_KEPT $n/ragewars.profile.json $n/host_config.py src pyproject.toml)-$depskey-$(wc -c < "$rom")
   hostkey=$(inputs $n)-$recompkey
   if [ -x "$build/n64host" ] && [ "$(cat "$build/key" 2>/dev/null)" = "$hostkey" ] && [ "$(readlink -f "$link")" = "$(readlink -f "$build")" ]; then
     echo "oracle: $build is live already, build skipped"
@@ -131,10 +144,10 @@ build() {
   fi
   # ccache the way RageWarsEnhanced's cmake/ccache.cmake does: base_dir and hash_dir ride in the launcher, and the root is
   # mapped out of the objects, so the same commit at another path hits
-  set --
+  set -- "-DCMAKE_C_COMPILER=$(command -v gcc-$major)" "-DCMAKE_CXX_COMPILER=$(command -v g++-$major)"
   if command -v ccache > /dev/null; then
     ccache=$(command -v ccache)
-    set -- "-DCMAKE_C_COMPILER_LAUNCHER=$ccache;base_dir=$root;hash_dir=false" "-DCMAKE_CXX_COMPILER_LAUNCHER=$ccache;base_dir=$root;hash_dir=false" \
+    set -- "$@" "-DCMAKE_C_COMPILER_LAUNCHER=$ccache;base_dir=$root;hash_dir=false" "-DCMAKE_CXX_COMPILER_LAUNCHER=$ccache;base_dir=$root;hash_dir=false" \
       "-DCMAKE_C_FLAGS=-ffile-prefix-map=$root=/src/cake-taste" "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=$root=/src/cake-taste"
   fi
   step deps "$depskey" sh $n/deps.sh "$deps"
