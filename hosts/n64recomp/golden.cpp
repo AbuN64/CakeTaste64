@@ -288,8 +288,6 @@ extern "C" bool n64host_golden_pad(unsigned channel, uint16_t *buttons, int8_t *
     *buttons = held[0]; *x = held_x[0]; *y = held_y[0];
     ++polls;
     if (const char *t = std::getenv("N64R_TAS_TRACE")) { static FILE *tf = std::fopen(t, "w"); if (tf) { std::fprintf(tf, "%llu %llu\n", (unsigned long long)polls, (unsigned long long)vi_count.load()); std::fflush(tf); } }
-    // N64R_TAS_CLOCK=FILE: "poll vi ns" per poll, the virtual guest clock at the poll (clock parity with the port's N64C_TAS_CLOCK)
-    if (const char *t = std::getenv("N64R_TAS_CLOCK")) { static FILE *cf = std::fopen(t, "w"); if (cf) { std::fprintf(cf, "%llu %llu %llu\n", (unsigned long long)polls, (unsigned long long)vi_count.load(), (unsigned long long)n64host_vclock_ns()); std::fflush(cf); } }
     n64host_tas_poll = polls;
     state_poll(polls);  // TS_CHECKPOINT, the same point the port samples (tas_state.h)
     if (n64host_lockstep_on) {  // N64R_LOCKSTEP_DIR: the per-poll lockstep point (lockstep.cpp)

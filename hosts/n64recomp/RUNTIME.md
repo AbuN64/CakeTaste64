@@ -320,8 +320,7 @@ unset the host behaves as before. It knows nothing about any game.
   replaces channel 0 poll by poll, so both replays are keyed to the guest's own
   polls. `N64R_TAS_SHOT_EVERY` (N) checkpoints `poll-<n>` every N polls;
   `N64R_TAS_TRACE` (file) writes "poll vi" per controller poll, the same line the port's `N64C_TAS_TRACE` writes.
-  `N64R_TAS_CLOCK` (file) writes "poll vi ns" per controller poll, ns the virtual guest clock (the port's `N64C_TAS_CLOCK`);
-  the lockstep poll line carries the same ns.
+  The lockstep poll line carries the virtual guest clock ns on both sides.
   `N64R_TAS_EXIT_AFTER` (N) quits N polls after the movie ends. The movie replays
   without `N64R_GOLDEN_DIR` too (then only the pictures below are written).
   `N64R_TAS_RENDER_LEAD` (K; unset or 0: every frame is drawn) draws only the graphics
