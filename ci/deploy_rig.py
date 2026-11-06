@@ -3,15 +3,14 @@
 them in file order on the rig at the landed revision, from the root of the tree, with
 LANDED_Projects_AbuN64_CakeTaste64 set and `deploy-env TOOLKIT=<live link>` in the environment; it appends its own
 landing arguments, which no step reads. A step prints its facts and exits 0, or prints one line on stderr and exits 1;
-it calls no other tool of the close. CakeTaste64 activates two links, both its own: the live oracle and its dev
-toolkit (the live link `deploy-env TOOLKIT=` names, which no other repository names). The toolkit holds every
+it calls no other tool of the close. CakeTaste64 activates one link, its dev toolkit (the live link `deploy-env TOOLKIT=` names, which no other
+repository names). The oracle build is not here: it is ci/oracle, run on host W through Terminal admission. The toolkit holds every
 requirement of pyproject.toml, its `dependencies` (abucache, installed at the commit its `[tool.bootstrap.sources]`
 repository holds when the toolkit is built) and the pinned `[dev]` extra, and its one command, `ruff`, is published by name into the one command directory
 `commands` beside the toolkit link (the directory the rig job PATH holds); the gate does not call it, it builds its
 own venv from `[dev]`. Exactly one toolkit publishes a given name: AbuDecomp64 publishes `decomp` and CakeUnbake64
 `unbake` and `unbake-run`, never `ruff`. The decomp toolkit link is AbuDecomp64's and the unbake toolkit
-CakeUnbake64's: this deploy never activates them, and the oracle recompile imports cake_taste from the tree, never
-from a toolkit, and runs it under the live toolkit's python (TOOLKIT), which holds abucache.
+CakeUnbake64's: this deploy never activates them, and nothing of the oracle is deployed.
 
   suite      the full test suite (unittest discover over tests/) runs in the tree with its src first on the import path,
              under the python of the tree's private venv (ci/ensure_venv.py: every dependency installed, abucache
@@ -23,21 +22,6 @@ from a toolkit, and runs it under the live toolkit's python (TOOLKIT), which hol
              each installed version must equal its pin, each source must read back at its commit.
              Only on exit 0 does the close flip the toolkit link; a failed build removes BUILD, and a build that is the
              live target already is a no-op;
-  oracle     the oracle activation (BUILD is <oracle>.<SHA>): builds n64host into BUILD (pinned deps copied from
-             ~/src/oracle-deps and patched by hosts/n64recomp/deps.sh) with the build tool at -j"$JOBS". The recompile
-             runs first and the decomp names every function: N64Recomp built at its pin with the host's patches, the
-             decomp ELF of the PINS RageWars commit (decomp_elf.sh, whose local.mk the command `unbake`
-             writes, called by name: CakeUnbake64's own, found on the job PATH), a taste profile derived
-             for BUILD, `taste recomp generate` into BUILD/recomp; oracle-pins.json records that decomp's commit and the
-             sha256 of its symbol_addrs.txt, which is kept in BUILD/gen; an address the decomp does not name stops it,
-             listed, never a func_ fallback. n64host is configured from that gen dir. Then the oracle self-check runs on
-             that build: boot-idle twice, the two state hashes must be equal. Only on exit 0 does the close flip the
-             oracle link; a build that is the live target already is a no-op;
-  readback   the live oracle link must read <oracle>.<SHA>; its oracle-pins.json must record the PINS RageWars
-             commit as the decomp the names came from, the symbol_addrs.txt kept beside the headers must hash to
-             the pinned sha256, and the deployed cpu_native.h must be the pinned one, hold no func_ name and name
-             osPiStartDma;
-             then the self-check again through the live link;
   commands   the live toolkit link must read <toolkit>.<SHA> with every requirement installed. Then each command (`ruff`) is
              linked by name into the command directory, through the live link (so it follows every later switch), and
              read back: it resolves into the live toolkit. The deploy removes nothing.
@@ -45,8 +29,6 @@ from a toolkit, and runs it under the live toolkit's python (TOOLKIT), which hol
   deploy-env TOOLKIT=<live link>
   rig run ci/deploy_rig.py suite
   rig activate ci/deploy_rig.py <toolkit live link> toolkit
-  rig activate ci/deploy_rig.py <oracle live link> oracle
-  rig run ci/deploy_rig.py readback
   rig run ci/deploy_rig.py commands"""
 
 import importlib.util
@@ -59,161 +41,17 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 ENV = "LANDED_Projects_AbuN64_CakeTaste64"
-RAGEWARS = "http://10.10.10.130:18556/Projects/RageWars.git"
-RAGEWARS_LOCAL = "$HOME/code/ragewars-decomp"
 COMMANDS = "commands"  # the command directory beside the toolkit link
 PUBLISHED = ("ruff",)  # this repository's toolkit command; decomp, unbake and unbake-run are other repositories'
 PIN = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;,<>=!~]+)")
 SOURCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]* @ git\+\S+@[0-9a-f]{40}")  # a requirement ensure_venv resolved
 ENSURE_VENV = "ci/ensure_venv.py"  # the tree's private venv: every dependency of pyproject.toml, abucache included
-RECOMP_PROFILE = "/home/abu/rig-state/behave/taste-profile.json"
-VERSION = "us-rev1"
 PACKAGE = "cake_taste"
 PYTHON = "/usr/bin/python3"
-ORACLE_LINK = "/home/abu/rig-state/tas/live/oracle"
 SHA = re.compile(r"[0-9a-f]{40}")
-HASH = re.compile(r"readback-hash: ([0-9a-f]{16})")
 
 # bash(script, args) runs one of the scripts below and returns its exit code and, when captured, its stdout.
 Bash = Callable[..., "tuple[int, str]"]
-
-# selfcheck HOST: boot-idle twice through the oracle binary HOST, one `readback-hash: <first-16-hex>` line per run (env
-# as tas_oracle.start); the job fails when the two state hashes differ. The state spec (tas_state.h) is derived from the
-# build checked: one word per RDRAM symbol of the symbol_addrs.txt kept in HOST's gen dir, so no spec outside the build
-# is needed and a build without that file, or without such a symbol, refuses.
-SELFCHECK = r"""selfcheck() {
-  host=$1
-  addrs=$(dirname "$host")/gen/symbol_addrs.txt
-  for need in "$host" "$addrs" "$HOME/code/ragewars-decomp/roms/baserom.us-rev1.z64"; do
-    test -e "$need" || { echo "selfcheck: $need is missing" >&2; exit 1; }
-  done
-  work=$(mktemp -d)
-  spec=$work/oracle.spec
-  sed -En -e '1i ram 800000\nregion ALL' -e 's/^(\S+) = 0x(80[0-7][0-9A-Fa-f]{4}[048cC]);.*/symbol \1\nrun \2 w 1/p' "$addrs" > "$spec"
-  grep -q ^symbol "$spec" || { echo "selfcheck: $addrs has no RDRAM symbol" >&2; exit 1; }
-  movie=$work/movie.raw
-  yes '0000 0 0' | head -n 600 > "$movie"
-  first=
-  for n in 1 2; do
-    out=$work/$n
-    mkdir "$out"
-    (
-      cd "$out"
-      export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy N64R_ROM=$HOME/code/ragewars-decomp/roms/baserom.us-rev1.z64 N64R_CONFIG=$HOME/rig-state/tas/oracle/cfg VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json N64R_PAK=on N64R_PADS=1 N64R_TAS_PLAY=$movie N64R_TAS_EXIT_AFTER=300 N64R_VIEW=$out/view.bmp N64R_AUDIO_OUT=/dev/null N64R_TAS_SHOT_EVERY=0 N64R_TAS_TRACE=$out/oracle-trace.txt N64R_TAS_STATE=$spec N64R_TAS_STATE_HASH=$out/state-oracle.txt
-      unset N64R_CPAK
-      "$host" > oracle.txt 2>&1 || { rc=$?; tail -n 5 oracle.txt >&2; echo "boot-idle run $n exit $rc" >&2; exit 1; }
-    ) || exit 1
-    hash=$(sha256sum "$out/state-oracle.txt" | cut -c1-16)
-    echo "readback-hash: $hash"
-    test -z "$first" || test "$first" = "$hash" || { echo "boot-idle state hashes differ: $first $hash" >&2; exit 1; }
-    first=$hash
-  done
-  rm -rf "$work"
-}
-"""
-
-# ORACLE: the oracle activation, run in the tree at the SHA with BUILD=<oracle>.<sha> and JOBS set. The build tree and
-# copied deps live only while it builds; exit 0 (built and self-checked) is the gate for the flip, and any other exit
-# removes $BUILD so the next activation of the sha starts clean. The copied deps are reset to their pins first: the
-# shared copy may carry an older patch set, and deps.sh applies this SHA's patches onto the pristine pin.
-ORACLE = (
-    SELFCHECK
-    + r"""set -eu
-sha=$(git rev-parse HEAD)
-if [ -x "$BUILD/n64host" ] && [ "$(readlink -f "__ORACLE_LINK__")" = "$(readlink -f "$BUILD")" ]; then
-  echo "oracle: $BUILD is live already, build skipped"
-  exit 0
-fi
-src=$PWD
-mkdir "$BUILD"
-trap 'rc=$?; test "$rc" = 0 || rm -rf "$BUILD"' EXIT
-mkdir "$BUILD/deps"
-cp -a "$HOME/src/oracle-deps/N64ModernRuntime" "$HOME/src/oracle-deps/rt64" "$HOME/src/N64Recomp" "$BUILD/deps/"
-rm -rf "$BUILD/deps/N64Recomp/build"
-for dep in N64Recomp N64ModernRuntime rt64; do git -C "$BUILD/deps/$dep" reset -q --hard; done
-sh hosts/n64recomp/deps.sh "$BUILD/deps"
-sh hosts/n64recomp/recompile.sh "$BUILD" "$src" __RAGEWARS__ __RAGEWARS_LOCAL__ \
-  __RECOMP_PROFILE__ __VERSION__
-gen=$BUILD/recomp/__VERSION__
-cmake -S hosts/n64recomp -B "$BUILD/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_COMPILER=/usr/bin/gcc-14 -DCMAKE_CXX_COMPILER=/usr/bin/g++-14 \
-  -DN64R_GEN_DIR="$gen" -DN64R_PINS="$src/hosts/n64recomp/PINS" \
-  -DN64R_PROFILE="$HOME/rig-state/behave/oracle-facts.json" \
-  -DN64R_REFUSED="$gen/refused.tsv" \
-  -DN64R_RT64_SRC="$BUILD/deps/rt64" -DN64R_RUNTIME_SRC="$BUILD/deps/N64ModernRuntime" \
-  -DFETCHCONTENT_FULLY_DISCONNECTED=ON
-cmake --build "$BUILD/build" -j"$JOBS"
-install -m 755 "$BUILD/build/n64host" "$BUILD/n64host"
-mkdir "$BUILD/gen"
-install -m 644 "$BUILD/build/gen/cpu_profile.h" "$BUILD/build/gen/cpu_native.h" "$gen/symbols.toml" "$BUILD/gen/"
-install -m 644 "$BUILD/decomp/versions/__VERSION__/symbol_addrs.txt" "$BUILD/gen/"
-python3 - "$sha" "__ORACLE_LINK__/oracle-pins.json" "$BUILD/gen" \
-  "$HOME/rig-state/behave/oracle-facts.json" "$(git -C "$BUILD/decomp" rev-parse HEAD)" \
-  > "$BUILD/oracle-pins.json" <<'PY'
-import hashlib, json, pathlib, sys, time
-old = json.load(open(sys.argv[2]))
-gen = {n: hashlib.sha256((pathlib.Path(sys.argv[3]) / n).read_bytes()).hexdigest()
-       for n in ("cpu_profile.h", "cpu_native.h")}
-decomp = {"commit": sys.argv[5],
-          "symbol_addrs": hashlib.sha256((pathlib.Path(sys.argv[3]) / "symbol_addrs.txt").read_bytes()).hexdigest()}
-print(json.dumps({"cake_taste": sys.argv[1], "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                  "wall": old["wall"], "cpu": old["cpu"], "gen": gen, "decomp": decomp,
-                  "facts": hashlib.sha256(pathlib.Path(sys.argv[4]).read_bytes()).hexdigest()}, indent=1))
-PY
-rm -rf "$BUILD/deps" "$BUILD/build" "$BUILD/decomp" "$BUILD/recomp" "$BUILD/taste-run"
-selfcheck "$BUILD/n64host"
-"""
-).replace("__ORACLE_LINK__", ORACLE_LINK)
-for token, value in (
-    ("__RAGEWARS_LOCAL__", RAGEWARS_LOCAL),
-    ("__RAGEWARS__", RAGEWARS),
-    ("__RECOMP_PROFILE__", RECOMP_PROFILE),
-    ("__VERSION__", VERSION),
-):
-    ORACLE = ORACLE.replace(token, value)
-
-
-# live: the live link's resolved target, for the already-live no-op path. A missing link, or one whose target holds no
-# executable n64host, exits 1 with the cause on stderr (readlink -f alone answers a path even for a dangling link).
-LIVE = f"""link={ORACLE_LINK}
-test -L "$link" || {{ echo "live oracle $link is not a symlink" >&2; exit 1; }}
-target=$(readlink -f "$link")
-test -x "$target/n64host" || {{ echo "live oracle link $link is broken: $target has no n64host" >&2; exit 1; }}
-echo "readback-live: $target"
-"""
-
-# PINCHECK PINS_JSON PINS GEN: the live oracle's pins against the repository's PINS and the deployed files. The decomp
-# commit oracle-pins.json records is the RageWars line of PINS; the symbol_addrs.txt kept in GEN hashes to the sha256 it
-# records; the deployed cpu_native.h is the one the pins hash, has no func_, asm_ or entry_ name and names osPiStartDma.
-PINCHECK = r"""import hashlib, json, pathlib, re, sys
-pins = json.load(open(sys.argv[1]))
-want = next(l.split()[1] for l in open(sys.argv[2]) if l.split()[:1] == ["RageWars"])
-gen = pathlib.Path(sys.argv[3])
-sha = lambda name: hashlib.sha256((gen / name).read_bytes()).hexdigest()
-native = (gen / "cpu_native.h").read_text()
-unnamed = sorted(set(re.findall(r"(?:func|asm|entry)_[0-9A-Fa-f]{8}\w*", native)))
-for ok, message in (
-    (pins["decomp"]["commit"] == want, f"the oracle was recompiled from {pins['decomp']['commit']}, PINS has {want}"),
-    (sha("symbol_addrs.txt") == pins["decomp"]["symbol_addrs"], "the kept symbol_addrs.txt is not the pinned one"),
-    (sha("cpu_native.h") == pins["gen"]["cpu_native.h"], "the deployed cpu_native.h is not the pinned one"),
-    (not unnamed, f"cpu_native.h holds {len(unnamed)} unnamed functions: {' '.join(unnamed[:20])}"),
-    ('"osPiStartDma"' in native, "cpu_native.h does not name osPiStartDma"),
-):
-    if not ok:
-        sys.exit(f"readback: {message}")
-print(f"readback-decomp: {want}")
-print(f"readback-symbol-addrs: {pins['decomp']['symbol_addrs']}")
-print(f"readback-func-names: {len(unnamed)}")
-print("readback-os-pi-start-dma: named")
-"""
-
-# readback: the live link's target, the pins check, then the self-check through the live link. Run from the tree root.
-READBACK = (
-    SELFCHECK
-    + f'set -eu\n{LIVE}python3 - "{ORACLE_LINK}/oracle-pins.json" hosts/n64recomp/PINS "{ORACLE_LINK}/gen" <<\'PY\'\n'
-    + PINCHECK
-    + f'PY\nselfcheck "{ORACLE_LINK}/n64host"\n'
-)
 
 # suite PYTHON: the suite run in the Worktree (a clean tree of exactly the SHA), one `suite-KEY: value` line per fact.
 SUITE = r"""set -u
@@ -410,7 +248,7 @@ def toolkit_requirements(root: Path, lookup: Callable | None = None) -> list[str
     bootstrap = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bootstrap)
     try:
-        found = bootstrap.requirements(root, lookup)
+        found = bootstrap.requirements(root, lookup, ("dev",))
     except RuntimeError as failure:
         raise Refused(str(failure)) from failure
     loose = [row for row in found if not (PIN.fullmatch(row) or SOURCE.fullmatch(row))]
@@ -443,7 +281,7 @@ def publish(toolkit: str) -> list[str]:
     return list(PUBLISHED)
 
 
-def step_suite(sha: str, toolkit: str, run: Bash) -> None:
+def step_suite(sha: str, toolkit: str, run: Bash, environ: dict[str, str]) -> None:
     code, out = run(r'exec "$1" "$2"', PYTHON, ENSURE_VENV, capture=True)
     python = last_line(out, "")
     if code or not python.startswith("/"):
@@ -465,33 +303,13 @@ def step_suite(sha: str, toolkit: str, run: Bash) -> None:
         raise Refused(f"suite failed at {first}: {found.get('suite-summary', 'no summary')}")
 
 
-def step_toolkit(sha: str, toolkit: str, run: Bash) -> None:
+def step_toolkit(sha: str, toolkit: str, run: Bash, environ: dict[str, str]) -> None:
     code, _ = run(TOOLKIT_BUILD, toolkit, *toolkit_requirements(Path.cwd()))
     if code:
         raise Refused(f"toolkit build exit {code}, links unchanged")
 
 
-def step_oracle(sha: str, toolkit: str, run: Bash) -> None:
-    code, _ = run(ORACLE, sha)
-    if code:
-        raise Refused(f"oracle build exit {code}, links unchanged")
-
-
-def step_readback(sha: str, toolkit: str, run: Bash) -> None:
-    code, out = run(READBACK, capture=True)
-    sys.stdout.write(out)
-    hashes = HASH.findall(out)
-    if code or len(hashes) != 2 or hashes[0] != hashes[1]:
-        raise Refused(f"readback exit {code}: {last_line(out, 'no output')}")
-    found = facts(out, "readback-")
-    if found.get("readback-func-names") != "0" or found.get("readback-os-pi-start-dma") != "named":
-        raise Refused(f"readback did not check the deployed names: {last_line(out, 'no output')}")
-    live = found.get("readback-live", "")
-    if live != f"{ORACLE_LINK}.{sha}":
-        raise Refused(f"the live oracle reads {live}, not {ORACLE_LINK}.{sha}")
-
-
-def step_commands(sha: str, toolkit: str, run: Bash) -> None:
+def step_commands(sha: str, toolkit: str, run: Bash, environ: dict[str, str]) -> None:
     code, out = run(TOOLKIT_READBACK, toolkit, f"{toolkit}.{sha}", *installed_requirements(Path.cwd()), capture=True)
     sys.stdout.write(out)
     if code:
@@ -502,8 +320,6 @@ def step_commands(sha: str, toolkit: str, run: Bash) -> None:
 STEPS = {
     "suite": step_suite,
     "toolkit": step_toolkit,
-    "oracle": step_oracle,
-    "readback": step_readback,
     "commands": step_commands,
 }
 
@@ -514,7 +330,8 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None, r
         step = STEPS.get(argv[0] if argv else "")
         if step is None:
             raise Refused(f"the step is one of {', '.join(STEPS)}, not {argv[0] if argv else 'nothing'!r}")
-        step(*landed(dict(os.environ) if environ is None else environ), run)
+        environ = dict(os.environ) if environ is None else environ
+        step(*landed(environ), run, environ)
     except Refused as refusal:
         sys.stderr.write(f"deploy refused: {refusal}\n")
         return 1

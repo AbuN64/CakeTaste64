@@ -14,11 +14,12 @@ VENV = ".venv"
 STAMP = ".pyproject.sha256"
 
 
-def requirements(root: Path, run=None) -> list[str]:
-    """pyproject.toml's dependencies and dev extra with each of our tools resolved to its landed commit."""
+def requirements(root: Path, run=None, extras: tuple[str, ...] = ("dev", "oracle")) -> list[str]:
+    """pyproject.toml's dependencies and the named extras, each of our tools resolved to its landed commit."""
     project = tomllib.loads((root / "pyproject.toml").read_text())
     sources = project["tool"]["bootstrap"]["sources"]
-    rows = [*project["project"]["dependencies"], *project["project"]["optional-dependencies"]["dev"]]
+    optional = project["project"]["optional-dependencies"]
+    rows = [*project["project"]["dependencies"], *(row for extra in extras for row in optional[extra])]
     resolved = []
     for row in rows:
         if row in sources:

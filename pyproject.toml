@@ -13,6 +13,7 @@ dependencies = ["abucache"]
 
 [project.optional-dependencies]
 dev = ["ruff==0.16.9"]
+oracle = ["unbake"]  # the decomp build toolchain ci/oracle calls from the private venv
 
 [project.scripts]
 taste = "cake_taste.cli:main"
@@ -34,3 +35,4 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.bootstrap.sources]
 abucache = "https://github.com/AbuN64/cache-64"
+unbake = "https://github.com/AbuN64/cake-unbake-64"

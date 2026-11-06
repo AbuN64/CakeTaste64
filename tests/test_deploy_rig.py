@@ -1,11 +1,9 @@
 """The rig deploy steps: each `.deploy` step run through a fake bash seam; the suite, live-link and runner scripts run
 for real in a tiny repository or a temp link."""
 
-import hashlib
 import importlib.util
 import json
 import os
-import shlex
 import stat
 import subprocess
 import sys
@@ -29,7 +27,6 @@ NEWER = "c" * 40
 HASH = "63576cbe05149fa7"
 SITE = f"{tempfile.gettempdir()}/example"  # a mocked rig home: no host path is tracked
 CHECKOUT = f"{SITE}/runs/b.c/Projects/AbuN64/CakeTaste64"
-ORACLE_LINK = deploy_rig.ORACLE_LINK
 TOOLKIT = f"{SITE}/venv-taste"  # the step takes it from its environment: any absolute path
 
 
@@ -42,9 +39,6 @@ def suite_log(sha=SHA, imported=f"{CHECKOUT}/src/cake_taste/__init__.py", failed
     return "\n".join(lines)
 
 
-def readback_log(live_sha, second=HASH):
-    return (f"readback-live: {ORACLE_LINK}.{live_sha}\nreadback-func-names: 0\nreadback-os-pi-start-dma: named\n"
-            f"readback-hash: {HASH}\nreadback-hash: {second}")
 
 
 RUNTIME_DEFINES = ("osViGetCurrentFramebuffer", "osViBlack", "osSpTaskStartGo", "osSpTaskYield", "osVirtualToPhysical",
@@ -60,32 +54,19 @@ def write_symbol_lists(build: Path) -> None:
         'const std::unordered_set<std::string> N64Recomp::ignored_funcs {\n    "__osViInit",\n};\n')
 
 
-PINS_SCRIPT = deploy_rig.ORACLE.split("<<'PY'\n")[1].split("\nPY\n")[0]
-PINCHECK_SCRIPT = deploy_rig.READBACK.split("<<'PY'\n")[1].split("\nPY\n")[0]
-PIN = "a67227a02a5dd6b5e0aa8e67c1172d2372a60154"
 
 
-def pins_json(tmp: Path, commit: str, addrs: bytes) -> dict:
-    """The pins script run for real over a gen dir that keeps the given symbol_addrs.txt."""
-    (tmp / "gen").mkdir(exist_ok=True)
-    for name in ("cpu_profile.h", "cpu_native.h"):
-        (tmp / "gen" / name).write_bytes(name.encode())
-    (tmp / "gen/symbol_addrs.txt").write_bytes(addrs)
-    (tmp / "facts.json").write_bytes(b"facts")
-    (tmp / "old.json").write_text('{"wall": 2, "cpu": 2}')
-    argv = ["python3", "-", "sha", *(str(tmp / n) for n in ("old.json", "gen", "facts.json")), commit]
-    return json.loads(subprocess.run(argv, input=PINS_SCRIPT, capture_output=True, text=True, check=True).stdout)
 
 
 class Shape(unittest.TestCase):
     def test_deploy_file_is_one_step_grammar_line_per_step_and_the_script_is_executable(self):
         lines = (ROOT / ".deploy").read_text().splitlines()
-        self.assertEqual(lines[:2], ["deploy-input TOOLKIT", "deploy-input ORACLE"])
+        self.assertEqual(lines[:1], ["deploy-input TOOLKIT"])
         self.assertNotIn("deploy-env", "\n".join(lines))
         self.assertNotIn("/home", "\n".join(lines))
-        lines = lines[2:]
+        lines = lines[1:]
         steps = [line.split()[-1] for line in lines]
-        self.assertEqual(steps, ["suite", "toolkit", "oracle", "readback", "commands"])
+        self.assertEqual(steps, ["suite", "toolkit", "commands"])
         self.assertEqual(steps, list(deploy_rig.STEPS))
         prefixes = ("rig run ci/deploy_rig.py ", "rig activate ci/deploy_rig.py $")
         self.assertTrue(all(line.startswith(prefixes) for line in lines))
@@ -94,9 +75,6 @@ class Shape(unittest.TestCase):
 
     def test_scripts_parse_and_no_commit_pin_or_job_invoke_remains(self):
         scripts = (
-            deploy_rig.ORACLE,
-            deploy_rig.READBACK,
-            deploy_rig.LIVE,
             deploy_rig.SUITE,
             deploy_rig.TOOLKIT_BUILD,
             deploy_rig.TOOLKIT_READBACK,
@@ -107,16 +85,6 @@ class Shape(unittest.TestCase):
         for retired in ("finish/", "flock", "waitfor", "ssh", "-j8", "Job Invoke", "butlermaster"):
             self.assertNotIn(retired, source)
 
-    def test_the_links_this_deploy_activates_are_its_own_toolkit_and_live_oracle(self):
-        lines = (ROOT / ".deploy").read_text().splitlines()
-        activated = [line.split()[3] for line in lines if line.startswith("rig activate ")]
-        self.assertEqual(activated, ["$TOOLKIT", "$ORACLE"])
-        declared = [line for line in lines if line.startswith("deploy-input")]
-        self.assertEqual(declared, ["deploy-input TOOLKIT", "deploy-input ORACLE"])
-        source = SCRIPT.read_text()
-        for toolkit_fact in ("venv-decomp", "venv-unbake", "decomp tools", "--carry-from"):
-            self.assertNotIn(toolkit_fact, source.split('"""', 2)[2])
-        self.assertFalse(hasattr(deploy_rig, "UNBAKE"))
 
     def test_this_deploy_publishes_ruff_and_no_command_another_toolkit_publishes(self):
         self.assertEqual(deploy_rig.PUBLISHED, ("ruff",))
@@ -127,46 +95,19 @@ class Shape(unittest.TestCase):
         self.assertIn('py="$(python3 ci/ensure_venv.py)"', gate)
         self.assertNotIn("\nruff ", gate)
 
-    def test_the_build_resets_the_copied_deps_and_removes_a_failed_build_folder(self):
-        for needle in ("reset -q --hard", 'trap \'rc=$?; test "$rc" = 0 || rm -rf "$BUILD"\' EXIT'):
-            self.assertIn(needle, deploy_rig.ORACLE)
-        self.assertLess(deploy_rig.ORACLE.index("cp -a"), deploy_rig.ORACLE.index("reset -q --hard"))
-        self.assertLess(deploy_rig.ORACLE.index("reset -q --hard"), deploy_rig.ORACLE.index("deps.sh"))
 
-    def test_the_recompile_runs_in_order_and_the_host_is_configured_from_its_gen_dir(self):
-        build = deploy_rig.ORACLE
-        steps = [
-            "sh hosts/n64recomp/deps.sh",  # N64Recomp at its pin, patched
-            "sh hosts/n64recomp/recompile.sh",  # N64Recomp built, decomp ELF, profile, generate, no unnamed
-            "cmake -S hosts/n64recomp",  # n64host fed from the generated dir
-            'cmake --build "$BUILD/build"',
-            'selfcheck "$BUILD/n64host"',
-        ]
-        at = [build.index(step) for step in steps]
-        self.assertEqual(at, sorted(at))
-        self.assertIn('-DN64R_GEN_DIR="$gen"', build)
-        self.assertIn(f"gen=$BUILD/recomp/{deploy_rig.VERSION}", build)
-        self.assertNotIn("rig-state/behave/gen", build)
-        self.assertIn(f'"$src" {deploy_rig.RAGEWARS} {deploy_rig.RAGEWARS_LOCAL} ', build)
-        self.assertNotIn("__", build.replace("__ORACLE_LINK__", ""))
-        self.assertLess(len(build.encode()), 4096)  # Job Invoke bounds one Argv item
 
-    def test_the_oracle_calls_recompile_sh_with_one_command_of_exactly_its_seven_arguments(self):
-        build = deploy_rig.ORACLE.replace("\\\n", " ")
-        line = next(ln for ln in build.splitlines() if ln.startswith("sh hosts/n64recomp/recompile.sh"))
-        self.assertEqual(len(shlex.split(line)), 1 + 1 + 6, line)
-        self.assertEqual(shlex.split(line)[-3:], [deploy_rig.RAGEWARS_LOCAL,
-                                                  deploy_rig.RECOMP_PROFILE, deploy_rig.VERSION])
 
     def test_recompile_sh_runs_its_steps_in_order_and_stops_on_an_unnamed_address(self):
         text = (ROOT / "hosts/n64recomp/recompile.sh").read_text()
         steps = ['cmake --build "$build/deps/N64Recomp/build"', 'sh "$src/hosts/n64recomp/decomp_elf.sh"',
-                 'python3 "$src/hosts/n64recomp/recomp_profile.py"', '/bin/python" -m cake_taste', 'test -z "$unnamed"',
+                 'python3 "$src/hosts/n64recomp/recomp_profile.py"', '"$py" -m cake_taste', 'test -z "$unnamed"',
                  'echo "func_names=0"']
         at = [text.index(step) for step in steps]
         self.assertEqual(at, sorted(at))
         self.assertIn('echo "$unnamed" >&2; exit 1', text)
-        self.assertIn('"${TOOLKIT:?', text)  # the toolkit python holds abucache; the system python3 holds none
+        self.assertIn('py=${6:?}', text)  # the private venv python holds abucache; the system python3 holds none
+        self.assertNotIn("TOOLKIT", text)
         self.assertNotIn("python3 -m cake_taste", text)
         self.assertIn("(func|asm|entry)_[0-9A-Fa-f]{8}", text)
         self.assertEqual(subprocess.run(["sh", "-n", str(ROOT / "hosts/n64recomp/recompile.sh")]).returncode, 0)
@@ -246,179 +187,14 @@ class Shape(unittest.TestCase):
         for name in (jtbl, funcs):
             self.assertTrue((ROOT / "hosts/n64recomp/patches" / name).is_file())
 
-    def test_the_selfcheck_writes_its_idle_movie_and_names_a_missing_input(self):
-        # 11-02: plays/20261030T142016Z-boot-idle was pruned and `test -f "$movie"` under set -e exited 1 silently,
-        # so the trap removed the freshly linked n64host with nothing in the log.
-        self.assertNotIn("runs/plays", deploy_rig.SELFCHECK)
-        self.assertIn("yes '0000 0 0' | head -n 600 > \"$movie\"", deploy_rig.SELFCHECK)
-        self.assertIn('echo "selfcheck: $need is missing" >&2; exit 1', deploy_rig.SELFCHECK)
-
-    def test_the_build_uses_the_job_width_and_the_activation_folder(self):
-        self.assertIn('cmake --build "$BUILD/build" -j"$JOBS"', deploy_rig.ORACLE)
-        self.assertIn('mkdir "$BUILD"', deploy_rig.ORACLE)
-        self.assertTrue(deploy_rig.ORACLE.rstrip().endswith('selfcheck "$BUILD/n64host"'))
-        self.assertIn(f'selfcheck "{ORACLE_LINK}/n64host"', deploy_rig.READBACK)
-
-    def test_the_charge_headers_ship_in_the_snapshot_and_are_hashed_in_its_pins(self):
-        build = deploy_rig.ORACLE
-        copy = (
-            'install -m 644 "$BUILD/build/gen/cpu_profile.h" "$BUILD/build/gen/cpu_native.h" '
-            '"$gen/symbols.toml" "$BUILD/gen/"'
-        )
-        self.assertIn(copy, build)
-        self.assertLess(build.index(copy), build.index('rm -rf "$BUILD/deps" "$BUILD/build"'))
-        self.assertLess(build.index(copy), build.index("oracle-pins.json"))
-        self.assertIn('"gen": gen', build)
-
-    def test_the_pins_script_hashes_both_headers_for_real(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            (tmp / "gen").mkdir()
-            (tmp / "gen/cpu_profile.h").write_bytes(b"profile")
-            (tmp / "gen/cpu_native.h").write_bytes(b"native")
-            (tmp / "gen/symbol_addrs.txt").write_bytes(b"osPiStartDma = 0x802BDDC0;")
-            (tmp / "facts.json").write_bytes(b"facts")
-            (tmp / "old.json").write_text('{"wall": 2, "cpu": 2}')
-            argv = ["python3", "-", "sha", *(str(tmp / n) for n in ("old.json", "gen", "facts.json")), "d" * 40]
-            out = subprocess.run(argv, input=PINS_SCRIPT, capture_output=True, text=True, check=True).stdout
-            pins = json.loads(out)
-            gen = pins["gen"]
-            self.assertEqual(pins["facts"], hashlib.sha256(b"facts").hexdigest())
-            self.assertEqual(gen["cpu_profile.h"], hashlib.sha256(b"profile").hexdigest())
-            self.assertEqual(gen["cpu_native.h"], hashlib.sha256(b"native").hexdigest())
 
 
 
-class DecompPins(unittest.TestCase):
-    def test_a_changed_pin_changes_oracle_pins_json(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            base = pins_json(tmp, PIN, b"osPiStartDma = 0x802BDDC0;")
-            self.assertEqual(base["decomp"], {"commit": PIN, "symbol_addrs": hashlib.sha256(
-                b"osPiStartDma = 0x802BDDC0;").hexdigest()})
-            self.assertEqual(pins_json(tmp, PIN, b"osPiStartDma = 0x802BDDC0;")["decomp"], base["decomp"])
-            self.assertNotEqual(pins_json(tmp, "e" * 40, b"osPiStartDma = 0x802BDDC0;")["decomp"], base["decomp"])
-            self.assertNotEqual(pins_json(tmp, PIN, b"osPiStartDma = 0x802BDDC4;")["decomp"], base["decomp"])
-
-    def test_the_oracle_keeps_the_pinned_symbol_addrs_beside_the_headers(self):
-        build = deploy_rig.ORACLE
-        keep = 'install -m 644 "$BUILD/decomp/versions/us-rev1/symbol_addrs.txt" "$BUILD/gen/"'
-        self.assertIn(keep, build)
-        self.assertLess(build.index(keep), build.index('rm -rf "$BUILD/deps" "$BUILD/build" "$BUILD/decomp"'))
-        self.assertIn('"$(git -C "$BUILD/decomp" rev-parse HEAD)"', build)
-
-    def readback(self, tmp: Path, native=b'{"osPiStartDma", 0},', pin=PIN, commit=PIN, addrs=b"a"):
-        pins = pins_json(tmp, commit, addrs)
-        (tmp / "gen/cpu_native.h").write_bytes(native)
-        pins["gen"]["cpu_native.h"] = hashlib.sha256(native).hexdigest()
-        (tmp / "oracle-pins.json").write_text(json.dumps(pins))
-        (tmp / "PINS").write_text(f"N64Recomp ffb\nRageWars {pin}\n")
-        argv = ["python3", "-", *(str(tmp / n) for n in ("oracle-pins.json", "PINS", "gen"))]
-        return subprocess.run(argv, input=PINCHECK_SCRIPT, capture_output=True, text=True)
-
-    def test_the_readback_checks_the_pins_and_the_deployed_names(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            ok = self.readback(tmp)
-            self.assertEqual(ok.returncode, 0, ok.stderr)
-            self.assertIn(f"readback-decomp: {PIN}", ok.stdout)
-            self.assertIn("readback-func-names: 0", ok.stdout)
-            self.assertIn("readback-os-pi-start-dma: named", ok.stdout)
-            for message, bad in (
-                ("recompiled from", self.readback(tmp, commit="f" * 40)),
-                ("1 unnamed functions: func_80204868_de",
-                 self.readback(tmp, native=b'{"osPiStartDma", 0},{"func_80204868_de", 1},')),
-                ("does not name osPiStartDma", self.readback(tmp, native=b'{"osSendMesg", 0},')),
-            ):
-                self.assertEqual(bad.returncode, 1, message)
-                self.assertIn(message, bad.stderr)
-            # a deployed file edited after the pins were written no longer hashes to its pin
-            argv = ["python3", "-", *(str(tmp / n) for n in ("oracle-pins.json", "PINS", "gen"))]
-            self.readback(tmp)
-            for name, content, message in (("symbol_addrs.txt", b"edited", "kept symbol_addrs.txt is not the pinned"),
-                                           ("cpu_native.h", b'"osPiStartDma" ', "cpu_native.h is not the pinned")):
-                self.readback(tmp)
-                (tmp / "gen" / name).write_bytes(content)
-                bad = subprocess.run(argv, input=PINCHECK_SCRIPT, capture_output=True, text=True)
-                self.assertEqual(bad.returncode, 1)
-                self.assertIn(message, bad.stderr)
-
-    def test_the_readback_runs_the_pins_check_before_the_self_check_in_the_tree(self):
-        self.assertIn("hosts/n64recomp/PINS", deploy_rig.READBACK)
-        self.assertLess(deploy_rig.READBACK.index("oracle-pins.json"), deploy_rig.READBACK.rindex("selfcheck "))
 
 
-class DecompElfScript(unittest.TestCase):
-    """decomp_elf.sh run for real against a throwaway repository, with a fake unbake toolkit and `make` on PATH."""
 
-    def run_script(self, tmp):
-        tmp = Path(tmp)
-        src = tmp / "src"
-        subprocess.run(["git", "init", "-q", str(src)], check=True)
-        (src / "Makefile").write_text("x\n")
-        env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.lan", "GIT_COMMITTER_NAME": "t",
-               "GIT_COMMITTER_EMAIL": "t@example.lan", "PATH": os.environ["PATH"], "HOME": str(tmp)}
-        subprocess.run(["git", "-C", str(src), "add", "."], check=True, env=env)
-        subprocess.run(["git", "-C", str(src), "commit", "-qm", "c"], check=True, env=env)
-        pin = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], check=True, capture_output=True,
-                             text=True).stdout.strip()
-        hosts = tmp / "hosts"
-        hosts.mkdir()
-        (hosts / "PINS").write_text(f"RageWars {pin}\n")
-        script = hosts / "decomp_elf.sh"
-        script.write_text((ROOT / "hosts/n64recomp/decomp_elf.sh").read_text())
-        local = tmp / "local"
-        (local / "roms").mkdir(parents=True)
-        (local / "roms/us.z64").write_text("rom")
-        (local / "local.mk").write_text("OBJSTORE := stale-toolkit\n")
-        bin_dir = tmp / "toolkit/bin"
-        bin_dir.mkdir(parents=True)
-        log = tmp / "calls"
-        fakes = {
-            "unbake": 'echo "toolkit-unbake $* in $(basename "$PWD")" >> "$CALLS"; '
-                      'echo "OBJSTORE := current-toolkit" > local.mk\n',
-            "make": 'echo "make $* local.mk=$(cat "$2/local.mk")" >> "$CALLS"; mkdir -p "$2/build/v1"; '
-                    'echo elf > "$2/build/v1/RageWars.elf"\n',
-        }
-        for name, body in fakes.items():
-            (bin_dir / name).write_text("#!/bin/sh\n" + body)
-            (bin_dir / name).chmod(0o755)
-        bin_make = tmp / "bin"
-        bin_make.mkdir()
-        (bin_dir / "make").rename(bin_make / "make")
-        (bin_dir / "unbake").rename(bin_make / "unbake")
-        env |= {"PATH": f"{bin_make}:{os.environ['PATH']}", "RAGEWARS_LOCAL": str(local), "JOBS": "3",
-                "CALLS": str(log)}
-        argv = ["sh", str(script), str(src), str(tmp / "dest"), "v1"]
-        done = subprocess.run(argv, env=env, capture_output=True, text=True)
-        return done, tmp / "dest", log, pin
 
-    def test_local_mk_is_written_in_the_clone_by_unbake_and_only_roms_are_copied(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            done, dest, log, pin = self.run_script(tmp)
-            self.assertEqual(done.returncode, 0, done.stderr)
-            self.assertEqual((dest / "local.mk").read_text(), "OBJSTORE := current-toolkit\n")
-            self.assertEqual((dest / "roms/us.z64").read_text(), "rom")
-            calls = log.read_text().splitlines()
-            self.assertEqual(calls[0], "toolkit-unbake setup --no-make in dest")
-            self.assertTrue(calls[1].startswith("make -C "), calls[1])
-            self.assertIn("-j3 build/v1/RageWars.elf local.mk=OBJSTORE := current-toolkit", calls[1])
-            self.assertIn(f"decomp_elf: {pin} v1", done.stdout)
 
-    def test_the_toolkit_scripts_call_unbake_by_name_and_track_no_home_path_or_venv(self):
-        for name in ("hosts/n64recomp/decomp_elf.sh", "hosts/n64recomp/recompile.sh", "ci/deploy_rig.py"):
-            text = (ROOT / name).read_text()
-            for site_fact in ("venv-unbake", "venv-decomp", "UNBAKE", "unbake/bin"):
-                self.assertNotIn(site_fact, text, f"{name}: {site_fact}")
-        self.assertNotIn("/home", deploy_rig.RAGEWARS_LOCAL)
-
-    def test_a_failed_setup_stops_before_make(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, "x").write_text("")
-            text = (ROOT / "hosts/n64recomp/decomp_elf.sh").read_text()
-            self.assertLess(text.index("unbake setup --no-make"), text.index("make -C"))
-            self.assertNotIn('cp "$local_dir/local.mk"', text)
-            self.assertIn("set -eu", text)
 
 
 class ToolkitBuildScript(unittest.TestCase):
@@ -516,7 +292,7 @@ class FakeRun:
         return self.answers.pop(0)
 
 
-ENVIRON = {deploy_rig.ENV: SHA, "TOOLKIT": TOOLKIT}
+ENVIRON = {deploy_rig.ENV: SHA, "TOOLKIT": TOOLKIT, "ORACLE_DECOMP": "/decomp", "ORACLE_DEPS": "/deps"}
 
 
 def step(argv, run, environ=ENVIRON):
@@ -538,7 +314,7 @@ class Host:
         (live / "bin").mkdir(parents=True)
         (live / "bin/ruff").write_text("#!/bin/sh\n")
         Path(self.toolkit).symlink_to(live)
-        self.environ = {deploy_rig.ENV: SHA, "TOOLKIT": self.toolkit}
+        self.environ = {**ENVIRON, "TOOLKIT": self.toolkit}
         return self
 
     def __exit__(self, *exc):
@@ -562,12 +338,6 @@ class Steps(unittest.TestCase):
             self.assertEqual((code, err.startswith("deploy refused: ")), (1, True))
         self.assertEqual(run.calls, [])
 
-    def test_oracle_builds_at_the_sha_alone_and_a_failed_build_refuses(self):
-        run = FakeRun((0, ""))
-        self.assertEqual(step(["oracle"], run)[0], 0)
-        self.assertEqual(run.calls[0][:2], (deploy_rig.ORACLE, (SHA,)))
-        code, _, err = step(["oracle"], FakeRun((1, "")))
-        self.assertEqual((code, "oracle build exit 1, links unchanged" in err), (1, True))
 
     def test_toolkit_installs_the_dependencies_and_pinned_dev_extra_of_the_tree_and_a_failed_build_refuses(self):
         rows = [f"abucache @ git+https://example.lan/cache-64@{SHA}", "ruff==0.16.9"]
@@ -621,17 +391,6 @@ class Steps(unittest.TestCase):
             self.assertEqual((code, "TOOLKIT is not an absolute path" in err), (1, True))
         self.assertEqual(run.calls, [])
 
-    def test_readback_needs_two_equal_hashes_and_the_live_link_at_the_sha(self):
-        self.assertEqual(step(["readback"], FakeRun((0, readback_log(SHA))))[0], 0)
-        for log, code in (
-            (readback_log(SHA, second="f" * 16), 0),
-            (readback_log(NEWER), 0),
-            (readback_log(SHA), 1),
-            (f"readback-live: {ORACLE_LINK}.{SHA}", 0),
-            (readback_log(SHA).replace("func-names: 0", "func-names: 3"), 0),
-            (readback_log(SHA).replace("os-pi-start-dma: named\n", ""), 0),
-        ):
-            self.assertEqual(step(["readback"], FakeRun((code, log)))[0], 1, log)
 
     def test_the_suite_runs_under_the_python_of_the_trees_private_venv_never_the_system_python(self):
         venv = f"{CHECKOUT}/.venv/bin/python"
@@ -659,93 +418,8 @@ class Steps(unittest.TestCase):
             self.assertEqual((code, needle in err), (1, True), (answer, err))
 
 
-class SelfcheckScript(unittest.TestCase):
-    """The SELFCHECK function run for real against a temp build: its state spec comes from the build's own gen dir."""
-
-    ADDRS = (
-        "D_95A8 = 0x000095A8; //\n"
-        "g_tlbMissExceptionVector = 0x80000000; //\n"
-        "s_selectTeamText = 0x800C7350; // rom:0xC7F50\n"
-        "g_unaligned = 0x800C7351; //\n"
-        "g_beyondRam = 0x80800000; //\n"
-    )
-
-    def run_selfcheck(self, addrs):
-        """(code, stdout, stderr, the spec the host was given) of selfcheck on a build with symbol_addrs.txt addrs."""
-        with tempfile.TemporaryDirectory() as tmp:
-            home = Path(tmp, "home")
-            rom = home / "code/ragewars-decomp/roms/baserom.us-rev1.z64"
-            rom.parent.mkdir(parents=True)
-            rom.write_bytes(b"rom")
-            build = Path(tmp, "oracle.abc")
-            (build / "gen").mkdir(parents=True)
-            if addrs is not None:
-                (build / "gen/symbol_addrs.txt").write_text(addrs)
-            seen = Path(tmp, "spec.seen")
-            (build / "n64host").write_text(
-                f'#!/bin/sh\ncp "$N64R_TAS_STATE" {seen}\ncp "$N64R_TAS_STATE" "$N64R_TAS_STATE_HASH"\n'
-            )
-            (build / "n64host").chmod(0o755)
-            body = deploy_rig.SELFCHECK + f'selfcheck "{build}/n64host"\n'
-            env = {**os.environ, "HOME": str(home), "TMPDIR": tmp}
-            done = subprocess.run(
-                ["bash", "-c", "set -eu\n" + body], capture_output=True, text=True, check=False, env=env
-            )
-            return done.returncode, done.stdout, done.stderr, seen.read_text() if seen.exists() else None
-
-    def test_the_spec_is_derived_from_the_symbols_of_the_build_checked(self):
-        code, out, err, spec = self.run_selfcheck(self.ADDRS)
-        self.assertEqual((code, err), (0, ""))
-        self.assertEqual(spec, "ram 800000\nregion ALL\nsymbol g_tlbMissExceptionVector\nrun 80000000 w 1\n"
-                               "symbol s_selectTeamText\nrun 800C7350 w 1\n")
-        self.assertEqual(len(out.split()), 4)  # "readback-hash: <h>" twice
-        self.assertEqual(len(set(out.split())), 2)
-        self.assertNotIn("state-spec", deploy_rig.SELFCHECK)
-
-    def test_a_build_without_its_symbol_addrs_is_refused_naming_the_file(self):
-        code, _, err, spec = self.run_selfcheck(None)
-        self.assertEqual(code, 1)
-        self.assertIn("gen/symbol_addrs.txt is missing", err)
-        self.assertIsNone(spec)
-
-    def test_a_build_whose_symbol_addrs_name_no_ram_symbol_is_refused(self):
-        code, _, err, spec = self.run_selfcheck("D_95A8 = 0x000095A8; //\n")
-        self.assertEqual(code, 1)
-        self.assertIn("has no RDRAM symbol", err)
-        self.assertIsNone(spec)
 
 
-class LiveLinkScript(unittest.TestCase):
-    """The LIVE script run for real against a temp toolkit link: what the rig reads when the link is bad."""
-
-    def run_live(self, prepare):
-        with tempfile.TemporaryDirectory() as tmp:
-            link = Path(tmp, "oracle")
-            prepare(link, Path(tmp))
-            body = deploy_rig.LIVE.replace(ORACLE_LINK, str(link))
-            done = subprocess.run(["bash", "-c", body], capture_output=True, text=True, check=False)
-            return done.returncode, done.stdout.strip(), done.stderr.strip(), Path(tmp).resolve()
-
-    def test_a_link_to_a_built_oracle_answers_its_resolved_target(self):
-        def prepare(link, tmp):
-            build = tmp / "oracle.abc"
-            build.mkdir()
-            (build / "n64host").write_text("#!/bin/sh\n")
-            (build / "n64host").chmod(0o755)
-            link.symlink_to(build)
-
-        code, out, _, tmp = self.run_live(prepare)
-        self.assertEqual((code, out), (0, f"readback-live: {tmp}/oracle.abc"))
-
-    def test_a_dangling_link_exits_1_naming_the_link_and_the_cause(self):
-        code, out, err, _ = self.run_live(lambda link, tmp: link.symlink_to(tmp / "gone"))
-        self.assertEqual((code, out), (1, ""))
-        self.assertRegex(err, r"live oracle link .*oracle is broken: .*gone has no n64host")
-
-    def test_a_missing_link_or_a_plain_directory_is_not_a_symlink(self):
-        code, _, err, _ = self.run_live(lambda link, tmp: None)
-        self.assertEqual(code, 1)
-        self.assertIn("is not a symlink", err)
 
 
 def git(*args, cwd):

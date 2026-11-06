@@ -1,0 +1,27 @@
+{
+ "schema_version": 1,
+ "name": "ragewars",
+ "project_root": "../../../RageWarsDecomp",
+ "runtime_root": "../../.state/taste-run",
+ "output_root": "../../.state/taste-run",
+ "recomp": {
+  "decomp_root": "../../../RageWarsDecomp",
+  "layout_glob": "versions/{version}/splat.yaml",
+  "symbols_file": "versions/{version}/symbol_addrs.txt",
+  "elf": "build/{version}/RageWars.elf",
+  "roms": {
+   "us-rev1": "../../../RageWarsDecomp/roms/baserom.us-rev1.z64"
+  },
+  "gen_root": "../../.state/recomp",
+  "tools": {
+   "n64recomp": "../../.state/oracle-deps/N64Recomp/build/N64Recomp",
+   "rsprecomp": "../../.state/oracle-deps/N64Recomp/build/RSPRecomp"
+  },
+  "rsp_audio": {
+   "segment": "rsp_audio_code",
+   "function": "rsp_audio",
+   "execution_vram": 67112960,
+   "source": "versions/us-rev1/splat.yaml segment rsp_audio_code (rom 0xDFE30); the audio microcode is loaded to RSP IMEM at 0x04001000"
+  }
+ }
+}

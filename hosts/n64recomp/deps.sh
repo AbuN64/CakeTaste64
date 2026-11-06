@@ -1,5 +1,5 @@
 #!/bin/sh
-# deps.sh DEST: N64Recomp, N64ModernRuntime and RT64 at the PINS commits with this host's patches applied, in DEST/<name>.
+# deps.sh DEST: N64Recomp, N64ModernRuntime, RT64 and AbuMas (the abumas assembler, built by ci/oracle) at the PINS commits with this host's patches applied, in DEST/<name>.
 # Idempotent: an existing checkout is moved to its pin (refused if it carries other edits) and patched once.
 # Configure the host with -DN64R_RUNTIME_SRC=DEST/N64ModernRuntime -DN64R_RT64_SRC=DEST/rt64.
 set -eu
@@ -32,3 +32,4 @@ prepare N64ModernRuntime https://github.com/N64Recomp/N64ModernRuntime \
   n64modernruntime-thread-queue-remove.diff n64modernruntime-virtual-time.diff \
   n64modernruntime-thread-context-slab.diff
 prepare rt64 https://github.com/rt64/rt64 rt64-acclaim-f3dex2-registration.diff rt64-headless-surface.diff
+prepare AbuMas https://github.com/AbuN64/mas-n64

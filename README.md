@@ -73,7 +73,24 @@ The CI environment is private to the checkout. `ci/ensure_venv.py` resolves the 
 `pyproject.toml` and every resolved requirement; a new AbuCache64 revision forces a fresh environment.
 Bootstrap uses the standard library and does not import or borrow the installed toolkit.
 
-The rig deploy (`ci/deploy_rig.py`) runs its suite under that same private environment and installs every declared
+The rig deploy (`ci/deploy_rig.py`, toolkit only; the oracle is `ci/oracle`) runs its suite under that same private environment and installs every declared
 dependency, `abucache` included, plus the pinned `[dev]` extra into the deploy toolkit; no package is installed by hand
 on the rig. `tests/test_declared_dependencies.py` fails when src or ci import a third-party module `pyproject.toml`
 does not declare.
+
+## The oracle
+
+`ci/oracle build` builds the N64Recomp oracle (`n64host`) and runs its self-check (boot-idle twice, the two state
+hashes must be equal); `ci/oracle selfcheck [HOST]` repeats the check. It is heavy: run it on host W through
+`mo-terminal Admission Invoke --Class Batch`. Every path comes from the repository, none from the environment:
+
+- the decomp is the sibling working copy `../RageWarsDecomp` (its `roms/` holds the dumps, its history the PINS commit);
+- the dependencies (N64Recomp, N64ModernRuntime, rt64, AbuMas) are fetched at their PINS into the git-ignored
+  `.state/oracle-deps/`; `abumas` is built from the AbuMas source there into `.state/tools/abumas`;
+- the build is `.state/oracle/<sha>/`, `.state/oracle/live` links the self-checked one; the project profile the recompile
+  derives from is the tracked `hosts/n64recomp/ragewars.profile.json` (workspace-relative paths, resolved against the
+  file), `.state/oracle-facts.json` is derived from it and `.state/cfg/` is the host config directory;
+- `unbake` comes from the private venv (`oracle` extra of `pyproject.toml`), never from PATH, and runs with
+  `--host .state/unbake.toml`, the host config `hosts/n64recomp/host_config.py` writes from unbake's own template (tools
+  from PATH, `abumas` from `.state/tools`, cache and toolchains inside `.state/`); the operator's
+  `~/.config/unbake/unbake.toml` is never read.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""recomp_profile.py LIVE_PROFILE BUILD: the taste profile LIVE_PROFILE with every recomp path moved into BUILD.
+"""recomp_profile.py LIVE_PROFILE BUILD: the taste profile LIVE_PROFILE (a tracked file, hosts/n64recomp/ragewars.profile.json
+for RageWars) with every recomp path moved into BUILD.
 
 The decomp is BUILD/decomp, the generated output goes to BUILD/recomp, and N64Recomp and RSPRecomp are the ones built in
 BUILD/deps/N64Recomp/build. Everything else (ROMs, sourced facts, the runtime-provided function list) is the live
@@ -10,6 +11,7 @@ matches a family and that N64Recomp lists as reimplemented (the runtime defines 
 address the decomp gives its name, and a family matching none stops the build. Prints the derived profile JSON."""
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -32,11 +34,19 @@ def host_functions(families: list[str], decomp_names: set[str], runtime_defines:
     return found
 
 
+def beside(live: str, value: str) -> str:
+    """A path of the live profile, absolute: a relative one resolves against the profile file, as Profile does."""
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(live)), value))
+
+
 def main(live: str, build: str) -> None:
     profile = json.loads(Path(live).read_text())
     profile.update(project_root=build + "/decomp", runtime_root=build + "/taste-run", output_root=build + "/taste-run")
     recomp = profile["recomp"]
     recomp["decomp_root"] = build + "/decomp"
+    for key in ("roms", "function_sections"):  # version to path objects; a missing key is refused by the recomp section
+        if key in recomp:
+            recomp[key] = {version: beside(live, path) for version, path in recomp[key].items()}
     recomp["gen_root"] = build + "/recomp"
     recomp["tools"] = {
         "n64recomp": build + "/deps/N64Recomp/build/N64Recomp",

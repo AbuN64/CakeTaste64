@@ -13,6 +13,7 @@ __pycache__/
 .env.*
 
 /runtime/
+/.state/
 /outputs/
 /evidence/
 /assets/
