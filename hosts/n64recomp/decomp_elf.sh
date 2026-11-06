@@ -20,6 +20,9 @@ if [ ! -d "$dest/.git" ]; then  # made beside DEST and renamed, so a kill leaves
   mv "$dest.clone" "$dest"
 fi
 test "$(git -C "$dest" rev-parse HEAD)" = "$pin"
+# The selected tool owns both generated files. Setup regenerates an absent Makefile, including the
+# four-argument keep_dates calls, alongside its matching local.mk; never retain the pinned tree's old generator output.
+"$(dirname "$unbake")/python" "$here/refresh_makefile.py" "$dest/Makefile"
 (cd "$dest" && "$unbake" --host "$host" setup --no-make)
 test -s "$dest/local.mk"
 make -C "$dest" -j"$jobs" "build/$version/RageWars.elf"

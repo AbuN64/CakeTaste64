@@ -1,3 +1,3 @@
-# RageWarsDecomp a67227a0 Makefile:454 and :464, the two keep_dates.py calls (tabs kept) that hosts/n64recomp/PINS RageWars builds with
-	$(Q)test -e build/.extract-run-$* || exit 0; python3 -I $(MKTOOLS)/keep_dates.py save $*
-	$(Q)test -e build/.extract-run-$* || exit 0; python3 -I $(MKTOOLS)/keep_dates.py restore $*
+# CakeUnbake64 36ea22de Makefile.in:127 and :137; setup renders these calls for the oracle's generated Makefile.
+	$(Q)test -e $(BUILD)/.extract-run-$* || exit 0; python3 -I $(MKTOOLS)/keep_dates.py $(ASM) $(BUILD) save $*
+	$(Q)test -e $(BUILD)/.extract-run-$* || exit 0; python3 -I $(MKTOOLS)/keep_dates.py $(ASM) $(BUILD) restore $*
