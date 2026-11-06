@@ -1,4 +1,4 @@
-"""Render the logical guest clock (RUNTIME.md "Virtual guest time") from oracle facts."""
+"""Render the logical guest clock's VI rate and the charged-function table (RUNTIME.md "Virtual guest time")."""
 
 from __future__ import annotations
 
@@ -9,20 +9,14 @@ from pathlib import Path
 
 
 def render(facts: dict) -> str:
-    return f"#pragma once\n#define HOST_GUEST_NS_PER_ENTRY {guest_ns_per_entry(facts['cpu'])!r}\n"
-
-
-def guest_ns_per_entry(cpu: dict) -> float:
-    """The logical clock's fixed charge (RUNTIME.md "Virtual guest time"): guest nanoseconds per charged entry, the
-    VI time of the recorded calibration window divided by the entries it ran."""
-    timing, window = cpu["timing"], cpu["calibration"]["window"]
-    for key, value in (("timing.vi_hz", timing["vi_hz"]), ("calibration.window.vi", window["vi"]),
-                       ("calibration.window.entries", window["entries"])):
-        if type(value) is not int or value <= 0:
-            raise ValueError(f"cpu.{key} must be a positive integer")
-    if timing["vi_hz"] != 60:
+    """The VI rate the host measures its guest clock against (RUNTIME.md "Virtual guest time"): the charge itself is
+    measured by the host at its own start, never a fact."""
+    vi_hz = facts["cpu"]["timing"]["vi_hz"]
+    if type(vi_hz) is not int or vi_hz <= 0:
+        raise ValueError("cpu.timing.vi_hz must be a positive integer")
+    if vi_hz != 60:
         raise ValueError("the pinned VI runtime currently supports only 60 Hz")
-    return float(window["vi"] * 1e9 / timing["vi_hz"] / window["entries"])
+    return f"#pragma once\n#define HOST_VI_HZ {vi_hz}\n"
 
 
 SYMBOL = re.compile(r'\{ name = "([A-Za-z_][A-Za-z0-9_]*)", vram = 0x([0-9A-Fa-f]+),')

@@ -3,8 +3,12 @@
 #include "recomp.h"
 #include <stdio.h>
 #include <stdlib.h>
+// A guest call into a function nothing implements stops the host with its name: returning would leave the guest running on
+// a result nobody computed, and a boot-idle run that idles after that proves nothing.
 void n64host_unimplemented(const char *name) {
-    static int n; if (n++ < 50) fprintf(stderr, "n64host: unimplemented %s\n", name);
+    fprintf(stderr, "n64host: unimplemented %s\n", name);
+    fflush(stderr);
+    _Exit(5);
 }
 #define GAP(f) void f(uint8_t* rdram, recomp_context* ctx) { n64host_unimplemented(#f); }
 GAP(__osAiDeviceBusy_recomp) GAP(__osDpDeviceBusy_recomp)

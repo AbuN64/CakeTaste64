@@ -1,0 +1,4 @@
+# Generated functions the host replaces whole, so their callees never run: kept_audit.py does not count them as callers. One per
+# line: the function, then the reason. A name the generated code lacks stops the audit.
+System_CreateVideoManager	vi_adapter.cpp wraps it without __real_: the real one (which calls __osViInit_kept and starts the VI manager thread) never runs
+System_RunVideoManager	the VI manager thread entry, started only by the real System_CreateVideoManager above; it calls __osViSwapContext_kept

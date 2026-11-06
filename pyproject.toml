@@ -12,7 +12,7 @@ requires-python = ">=3.13"
 dependencies = ["abucache"]
 
 [project.optional-dependencies]
-dev = ["ruff==0.16.9"]
+dev = ["ruff==0.16.9", "jsonschema==4.26.0"]  # jsonschema: tests/test_oracle_inputs.py checks the oracle facts against their schema
 oracle = ["unbake"]  # the decomp build toolchain ci/oracle calls from the private venv
 
 [project.scripts]
@@ -34,5 +34,5 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 "cake_taste.logs" = ["event.schema.json"]
 
 [tool.bootstrap.sources]
-abucache = "https://github.com/AbuN64/cache-64"
-unbake = "https://github.com/AbuN64/cake-unbake-64"
+abucache = "https://github.com/AbuN64/cache-64@9b5199f3eef804ff2cb085d240e846e2f10850ee"
+unbake = "https://github.com/AbuN64/cake-unbake-64@089e157d1651de494f6f8e4a6c1fdb5b4846c894"  # newest commit whose generated Makefile carries the PINS RageWars Makefile generator stamp (882f9732dfb4); keep_dates.py takes 2 arguments

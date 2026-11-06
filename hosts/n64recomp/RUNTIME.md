@@ -57,7 +57,7 @@ a game state. Inspect captured images before accepting front-end or gameplay.
 The oracle's clock is virtual (`patches/n64modernruntime-virtual-time.diff`). Count, VI
 retraces, `osSetTimer` timers, SI completion and RSP/graphics task completion are events on one
 virtual clock in nanoseconds. Guest time is a logical work count, never a host clock: it advances only
-when a guest thread enters a charged function, by the fixed `HOST_GUEST_NS_PER_ENTRY` (the fraction carried),
+when a guest thread enters a charged function, by the measured charge per entry (the fraction carried),
 and due events run on that guest thread in time order. When every guest thread is idle or blocked, the clock
 jumps straight to the next event. Wall time, host CPU time and host load never move it, and nothing sleeps
 or spins to pace the guest, so the same inputs give byte-identical results on any host at any speed.
@@ -73,7 +73,7 @@ from the recompile of the decomp ELF at the pinned RageWars commit, and an addre
 render with the address listed); the port charges exactly the
 `type:func` symbols outside those ranges (`shim/boot/trace.py`, `n64c_trace_charged`). A spin loop's 1024th
 pass and an interrupt restore are service points only: they deliver due interrupts and charge nothing.
-`HOST_GUEST_NS_PER_ENTRY` is the recorded calibration window's VI time over its entries (`cpu.calibration`).
+The charge per entry is measured by the host at its own start, never a fact: the first `cpu.timing.vi_hz` retraces (one second of VI time) run on a provisional charge, and the window's VI time over the entries it ran is the charge from then on.
 
 An RSP task completes a fixed guest duration after submission (graphics 8 ms, audio 2 ms,
 hardware-like constants in `events.cpp`), and only once the host has finished the work: if
@@ -264,6 +264,17 @@ Original facts: asm/us-rev1/func_802AD370_de.s:14-58;
 osUnmapTLBAll.s:14-30; func_802BAD70_de.s:14-15;
 func_8023C1F0_de.s:26-39. No reference implementation was copied.
 
+`osVirtualToPhysical` is wrapped (`tlb_adapter.c`) because the runtime's own maps KSEG0/KSEG1 only and returns a KUSEG
+address unchanged, while the game's original walks the TLB too (`__osProbeTLB`, -1 for an unmapped page): the audio task
+builder hands the RSP the physical address of a TLB-mapped KUSEG command list.
+
+Indirect calls (`jalr`/`jr` through `LOOKUP_FUNC`) translate a KUSEG target through the same guest TLB as a load (a miss runs
+the guest pager) and look up the function by its KSEG0 link label, `0x80000000 | virtual` (`n64host_func_vram`, `addrmap.c`): the decomp links
+paged code at the virtual address, whatever physical page holds it (the boot window maps VA 0x200000 to PA 0). The game stores
+such targets on purpose: its callbacks and thread entries are packed 24-bit addresses (decomp symbols `g_*RomEntry`,
+`g_*PackedAddress24` at 0x00xxxxxx, e.g. the resource-load worker's request `dispatch` word 0x0044E584 =
+Scene_ScaleDefinitionFields at 0x8044E584), and the pager maps those pages.
+
 Bounded call probes have static mappings and no guest pager: unmapped KUSEG
 accesses now fail instead of silently supplying zero definitions. Complete boot
 uses the original pager and replacement policy. KSEG0/KSEG1 and the preexisting
@@ -412,7 +423,10 @@ The recorder only reads: guest time and the run are unchanged.
   in the runtime or the host; the generator also lists them in `funcs/replaced_funcs.inl`, which the host
   registers so a stored function pointer (a device-manager table) reaches the replacement.
 - `recomp.rsp_audio` takes either `segment` (a layout segment) or `rom` + `size` + `execution_vram` +
-  `source` when the decomp does not delimit the microcode.
+  `source` when the decomp does not delimit the microcode. A `segment` microcode's IMEM load address is read from the
+  boot microcode (`boot_segment`: the `addi rt,$zero,imm` / `jr rt` pair of osSpTaskLoad's ucode_boot), never typed. `data_segment` names the microcode's DMEM data
+  segment: the generator finds the `lh`+`jr` dispatcher in the microcode and reads its halfword jump table
+  from that data into the toml's `extra_indirect_branch_targets` (RspExitReason 3 otherwise), never a typed list.
 - Code that a decomp keeps as a data split is found by N64Recomp only as `static_<n>_<vram>`. A refused
   static is declared as a function whose size runs to the next function, function symbol or split
   (`statics.tsv` records name, vram, size and the boundary used) and is then ignored by name.

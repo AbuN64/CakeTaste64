@@ -8,7 +8,7 @@ from pathlib import Path
 from test_recomp import build
 
 from cake_taste import TasteError
-from cake_taste.recomp.generate import _reason, _rsp, load_layout, write_symbols
+from cake_taste.recomp.generate import _reason, _rsp, load_layout, rsp_dispatch_targets, write_symbols
 from cake_taste.recomp.settings import load
 from cake_taste.recomp.supplement import read_sections
 
@@ -88,6 +88,28 @@ class SupplementTests(unittest.TestCase):
             _rsp(settings, "v1", load_layout(settings, "v1"))
             config = tomllib.loads((root / "gen/v1/rsp.toml").read_text())
             self.assertEqual(config["extra_indirect_branch_targets"], [0x1118, 0x12D0])
+
+    # RageWars us-rev1 audio ucode: the dispatcher (add r2,r0,r1; lh r2,0x10(r2); jr r2; code rom 0xDFE30, IMEM
+    # 0x1088) and the first 0x40 bytes of its DMEM data (rom 0xE1460): the acmd jump table at 0x10, then masks.
+    DISPATCH = bytes.fromhex("00011020" "84420010" "00400008" "00000000")
+    DATA = bytes.fromhex("0000 0001 0002 ffff 0020 0800 7fff 4000 1118 1470 11dc 1b38 1214 187c 1254 12d0"
+                         "12ec 1328 140c 1294 1e24 138c 170c 144c f000 0f00 00f0 000f 0001 0010 0100 1000")
+
+    def test_rsp_jump_table_targets_are_read_from_the_ucode_data(self):
+        code = self.DISPATCH + bytes(0xE20 - len(self.DISPATCH))  # IMEM 0x1000..0x1E1F
+        table = [0x1118, 0x1470, 0x11DC, 0x1B38, 0x1214, 0x187C, 0x1254, 0x12D0,
+                 0x12EC, 0x1328, 0x140C, 0x1294, 0x1E24, 0x138C, 0x170C, 0x144C]
+        self.assertEqual(rsp_dispatch_targets(code, self.DATA, 0x04001000), sorted(set(table) - {0x1E24}))
+        self.assertEqual(rsp_dispatch_targets(bytes(64), self.DATA, 0x04001000), [])  # no dispatcher, no table
+
+    def test_rsp_data_segment_is_a_layout_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            settings = load(build(root, rsp_config={"segment": "rsp_code", "function": "rsp_fn",
+                                                    "data_segment": "rsp_code"}))
+            self.assertEqual(settings.rsp_data_segment, "rsp_code")
+            with self.assertRaises(TasteError):
+                _rsp(replace(settings, rsp_data_segment="absent"), "v1", load_layout(settings, "v1"))
 
     def test_rsp_execution_is_independent_of_storage_address(self):
         with tempfile.TemporaryDirectory() as tmp:

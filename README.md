@@ -65,12 +65,14 @@ slots, pool, stages). `ci/abucache-audit`, run by the check entry point, refuses
 files it still lists move to abucache and leave the list, nothing joins it.
 
 Stage duration results use `abucache.stages.timed()` and its `Timing.seconds` observation (seconds, including running work).
-This requires AbuCache64 with the duration observation API introduced at `43bb0be`; first-party dependencies resolve
-their landed main revision rather than retaining a consumer commit pin. Deadline and heartbeat clocks retain their scheduling role.
+This requires AbuCache64 with the duration observation API introduced at `43bb0be`. Deadline and heartbeat clocks retain their scheduling role.
 
-The CI environment is private to the checkout. `ci/ensure_venv.py` resolves the source names declared in
-`tool.bootstrap.sources` to their landed revisions before installing dependencies. Its reuse key includes
-`pyproject.toml` and every resolved requirement; a new AbuCache64 revision forces a fresh environment.
+The CI environment is private to the checkout. `ci/ensure_venv.py` installs the source names declared in
+`tool.bootstrap.sources` at the exact commit each row pins (`URL@COMMIT`; a row without one refuses, so nothing floats). Its
+reuse key includes `pyproject.toml` and every resolved requirement; moving a pin forces a fresh environment.
+`unbake` is pinned to the CakeUnbake64 commit whose `unbake sync --makefile` reproduces the Makefile of the RageWars commit in
+`hosts/n64recomp/PINS` (`tests/test_unbake_pin.py` fails when its `keep_dates.py` call shape differs from that Makefile's);
+moving the RageWars pin means moving the unbake pin and `tests/fixtures/decomp_keep_dates.mk` with it.
 Bootstrap uses the standard library and does not import or borrow the installed toolkit.
 
 `tests/test_declared_dependencies.py` fails when src or ci import a third-party module `pyproject.toml`
@@ -82,7 +84,8 @@ does not declare.
 hashes must be equal); `ci/oracle selfcheck [HOST]` repeats the check. It is heavy: run it on host W through
 `mo-terminal Admission Invoke --Class Batch`. Every path comes from the repository, none from the environment:
 
-- the decomp is the sibling working copy `../RageWarsDecomp` (its `roms/` holds the dumps, its history the PINS commit);
+- the decomp is the working copy `RageWarsDecomp` beside this repository's main working tree (the parent of `git rev-parse --path-format=absolute --git-common-dir`: the same folder for a checkout and for any worktree of it, so a run worktree needs no link; its `roms/` holds the dumps, its history the PINS commit);
+- the state is one git-ignored `.state/` beside the main working tree (`$main/.state`, `$main` found like the decomp): a checkout and every worktree of it share it, so a new run worktree reuses each step whose input digest matches (the step keys are content digests, never a path); builds take `.state/oracle.lock` one at a time;
 - the dependencies (N64Recomp, N64ModernRuntime, rt64, AbuMas) are fetched at their PINS into the git-ignored
   `.state/oracle-deps/`; `abumas` is built from the AbuMas source there into `.state/tools/abumas`;
 - the build is `.state/oracle/<sha>/`, `.state/oracle/live` links the self-checked one; the project profile the recompile

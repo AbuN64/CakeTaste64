@@ -28,3 +28,24 @@ class SwitchErrorTests(unittest.TestCase):
             result = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 4)
             self.assertIn("function=f pc=0x80001234 table=0x80005678", result.stderr)
+
+
+    def test_a_call_into_an_unimplemented_function_stops_the_host_naming_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p / "recomp.h").write_text(
+                "#include <stdint.h>\ntypedef uint64_t gpr;\ntypedef struct {gpr r2;} recomp_context;\n"
+            )
+            (p / "main.c").write_text(
+                '#include <stdint.h>\nvoid n64host_unimplemented(const char*);\n'
+                'int main(void){n64host_unimplemented("__osDispatchThread_kept");return 0;}\n'
+            )
+            binary = p / "test"
+            subprocess.run(
+                ["cc", "-I", tmp, str(HOST / "libultra_gaps.c"), str(p / "main.c"), "-o", str(binary)],
+                check=True,
+                capture_output=True,
+            )
+            result = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 5)
+            self.assertIn("unimplemented __osDispatchThread_kept", result.stderr)

@@ -10,6 +10,8 @@ from cake_taste import TasteError
 
 _REQUIRED = {"decomp_root", "layout_glob", "symbols_file", "elf", "roms", "gen_root", "tools"}
 _OPTIONAL = {
+    "input_bindings",
+    "rdram_size",
     "entrypoint",
     "trace_mode",
     "recomp_include",
@@ -54,9 +56,13 @@ class Settings:
     local_indirect_jumps: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     rsp_indirect_targets: tuple[int, ...] = ()
+    rsp_data_segment: str | None = None  # the microcode's DMEM data image: its jump tables give the indirect targets
     rsp_execution_vram: int | None = None
+    rsp_boot_segment: str | None = None  # the boot microcode's segment: the IMEM load address is read from it
     rsp_rom: int | None = None  # microcode text given as a sourced ROM span instead of a layout segment
     rsp_size: int | None = None
+    rdram_size: int | None = None  # the host's RDRAM choice: a sourced constant, not a decomp read
+    input_bindings: Path | None = None  # tracked controller bindings the host compiles (a JSON file of {"input": ...})
 
     def sizes_for(self, version: str) -> dict[int, int]:
         return self.function_sizes.get(version, {})
@@ -110,7 +116,8 @@ def load(profile: Any) -> Settings:
     rsp = raw.get("rsp_audio")
     if rsp is not None and (not isinstance(rsp, dict) or "function" not in rsp or ("segment" in rsp) == ("rom" in rsp)
                             or rsp.keys() - {"segment", "function", "extra_indirect_branch_targets",
-                                             "source", "execution_vram", "rom", "size"}):
+                                             "source", "execution_vram", "rom", "size", "data_segment",
+                                             "boot_segment"}):
         raise TasteError("config.schema", "recomp.rsp_audio: expected function, a segment or a rom span, and targets")
     if rsp is not None and "rom" in rsp:
         rom, size = rsp["rom"], rsp.get("size")
@@ -118,6 +125,11 @@ def load(profile: Any) -> Settings:
                 or not rsp.get("source") or rsp.get("execution_vram") is None):
             raise TasteError("config.schema", "recomp.rsp_audio rom span needs aligned rom and size, source and "
                              "execution_vram")
+    if rsp is not None and "boot_segment" in rsp and ("execution_vram" in rsp or "segment" not in rsp):
+        raise TasteError("config.schema", "recomp.rsp_audio: boot_segment (the load address from the boot ucode) "
+                         "belongs to a segment microcode and excludes execution_vram")
+    if rsp is not None and not isinstance(rsp.get("data_segment", ""), str):
+        raise TasteError("config.schema", "recomp.rsp_audio.data_segment: expected a layout segment name")
     targets = rsp.get("extra_indirect_branch_targets", []) if rsp else []
     if (not isinstance(targets, list)
             or any(type(t) is not int or not 0x1000 <= t < 0x2000 or t & 3 for t in targets)
@@ -166,7 +178,13 @@ def load(profile: Any) -> Settings:
                 function_sizes[version][addr] = size
     except (AttributeError, TypeError, KeyError, ValueError) as exc:
         raise TasteError("config.schema", f"recomp.function_sizes: {exc}") from exc
+    ram = raw.get("rdram_size")
+    if ram is not None and (not isinstance(ram, dict) or set(ram) != {"bytes", "source"}
+                            or type(ram["bytes"]) is not int
+                            or ram["bytes"] <= 0 or ram["bytes"] & 0xFFFFF or not ram["source"]):
+        raise TasteError("config.schema", "recomp.rdram_size: expected {bytes: whole MiB, source}")
     return Settings(
+        rdram_size=ram["bytes"] if ram else None,
         decomp_root=profile.resolve_path(raw["decomp_root"]),
         layout_glob=raw["layout_glob"],
         symbols_file=raw["symbols_file"],
@@ -188,8 +206,11 @@ def load(profile: Any) -> Settings:
         function_sections={str(v): profile.resolve_path(p) for v, p in sections.items()},
         function_sizes=function_sizes,
         local_indirect_jumps=raw.get("local_indirect_jumps", {}),
+        input_bindings=profile.resolve_path(raw["input_bindings"]) if "input_bindings" in raw else None,
         rsp_indirect_targets=tuple(targets),
+        rsp_data_segment=rsp.get("data_segment") if rsp else None,
         rsp_execution_vram=execution,
+        rsp_boot_segment=rsp.get("boot_segment") if rsp else None,
         rsp_rom=rsp.get("rom") if rsp else None,
         rsp_size=rsp.get("size") if rsp else None,
     )

@@ -1,10 +1,18 @@
 #!/bin/sh
 # ci/oracle build | selfcheck [HOST]: the N64Recomp oracle (n64host) of this tree, built and self-checked. Every path
 # is found from the repository itself, no environment input:
-#   ../RageWarsDecomp   the decomp working copy beside this repository (roms/ holds the cartridge dumps; its git history
+#   RageWarsDecomp      the decomp working copy beside this repository's main working tree: the parent of
+#                       `git rev-parse --git-common-dir`, the same folder for a checkout and for any worktree of it, so a run
+#                       worktree needs no link (roms/ holds the cartridge dumps; its git history
 #                       holds the PINS RageWars commit the oracle is recompiled from)
-#   .state/             this repository's git-ignored state: oracle-deps/ (N64Recomp, N64ModernRuntime, rt64, fetched at
-#                       their PINS by deps.sh), oracle/<sha>/ (the build), oracle/live (link to the self-checked build),
+#   .state/             the per-host state folder beside the main working tree (git-ignored): $main/.state, the same folder for a
+#                       checkout and for every worktree of it, so a new run worktree reuses a step whose input digest matches
+#                       (step keys are content digests, never a worktree path; one build at a time holds oracle.lock).
+#                       Holds oracle-deps/ (N64Recomp, N64ModernRuntime, rt64, fetched at
+#                       their PINS by deps.sh), oracle-steps/ (per step the digest of the inputs it finished for: a rerun skips a
+#                       finished step and resumes an interrupted one; oracle-recomp/<digest>/ holds the decomp ELF and the
+#                       recompile output, oracle-host/ the ninja build dir, compiled through ccache),
+#                       oracle/<sha>/ (the build), oracle/live (link to the self-checked build),
 #                       tools/abumas (built from the AbuMas PINS commit), unbake.toml (this tree's own unbake host config,
 #                       written from unbake's template by host_config.py; the operator file is never read),
 #                       oracle-facts.json (derived by the build), cfg/ (host config dir)
@@ -14,8 +22,9 @@
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-state=$root/.state
-decomp=$root/../RageWarsDecomp
+main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+state=$main/.state
+decomp=$(dirname "$main")/RageWarsDecomp
 version=us-rev1
 rom=$decomp/roms/baserom.$version.z64
 profile=$root/hosts/n64recomp/ragewars.profile.json
@@ -53,6 +62,7 @@ selfcheck() {  # HOST: boot-idle twice; the two state hashes must be equal
       export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy N64R_ROM=$rom N64R_CONFIG=$cfg VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json N64R_PAK=on N64R_PADS=1 N64R_TAS_PLAY=$movie N64R_TAS_EXIT_AFTER=300 N64R_VIEW=$out/view.bmp N64R_AUDIO_OUT=/dev/null N64R_TAS_SHOT_EVERY=0 N64R_TAS_TRACE=$out/oracle-trace.txt N64R_TAS_STATE=$spec N64R_TAS_STATE_HASH=$out/state-oracle.txt
       unset N64R_CPAK
       "$host" > oracle.txt 2>&1 || { rc=$?; tail -n 5 oracle.txt >&2; echo "boot-idle run $n exit $rc" >&2; exit 1; }
+      test -s state-oracle.txt || { tail -n 5 oracle.txt >&2; echo "boot-idle run $n exited 0 but wrote no state hash: two empty states are equal, not a check" >&2; exit 1; }
     ) || exit 1
     hash=$(sha256sum "$out/state-oracle.txt" | cut -c1-16)
     echo "readback-hash: $hash"
@@ -62,46 +72,88 @@ selfcheck() {  # HOST: boot-idle twice; the two state hashes must be equal
   rm -rf "$work"
 }
 
+inputs() {  # PATH...: a digest of the tracked content of the paths, the key of a step that reads them
+  git ls-files -z -- "$@" | xargs -0 sha256sum | sha256sum | cut -c1-16
+}
+
+step() {  # NAME KEY COMMAND...: the command unless NAME finished for KEY already; KEY is recorded once it succeeds, so an
+  name=$1 key=$2  # interrupted build resumes at the first step that did not finish, and the half-made output (ninja's
+  shift 2         # build dir, the decomp clone, the deps) is kept
+  if [ "$(cat "$steps/$name" 2>/dev/null)" = "$key" ]; then
+    echo "oracle-time: $name 0s (finished)" >&2
+    return 0
+  fi
+  rm -f "$steps/$name"
+  timed "$name" "$@"
+  echo "$key" > "$steps/$name"
+}
+
+build_abumas() {
+  make -C "$deps/AbuMas" -j"$jobs"
+  mkdir -p "$state/tools"
+  install -m 755 "$deps/AbuMas/build/abumas" "$state/tools/abumas"
+}
+
+host_build() {  # CMAKE_ARG...: configure and build the host in the shared ninja dir; a dir another worktree configured is
+  home=$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$state/oracle-host/CMakeCache.txt" 2>/dev/null || true)
+  test -z "$home" || test "$home" = "$root/$n" || rm -f "$state/oracle-host/CMakeCache.txt"  # configured again here; objects stay
+  cmake -S $n -B "$state/oracle-host" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER=/usr/bin/gcc-14 -DCMAKE_CXX_COMPILER=/usr/bin/g++-14 "$@" \
+    -DN64R_GEN_DIR="$gen" -DN64R_PINS="$root/$n/PINS" -DN64R_PROFILE="$facts" \
+    -DN64R_REFUSED="$gen/refused.tsv" \
+    -DN64R_RT64_SRC="$deps/rt64" -DN64R_RUNTIME_SRC="$deps/N64ModernRuntime" \
+    -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+  cmake --build "$state/oracle-host" -j"$jobs"
+}
+
 build() {
   test -d "$decomp/.git" || { echo "oracle: the decomp working copy $decomp is missing; clone RageWarsDecomp beside this repository" >&2; exit 1; }
   test -e "$rom" || { echo "oracle: $rom is missing (the decomp's roms/ holds the dumps)" >&2; exit 1; }
   sha=$(git rev-parse HEAD)
   jobs=$(nproc)
   py=$(python3 ci/ensure_venv.py)
-  unbake=$(dirname "$py")/unbake
-  test -x "$unbake" || { echo "oracle: $unbake is missing; pyproject.toml declares unbake in [dev], rebuild .venv" >&2; exit 1; }
+  upy=$(python3 ci/ensure_venv.py unbake)  # unbake's own environment: it pins an abucache older than ours
+  unbake=$(dirname "$upy")/unbake
+  test -x "$unbake" || { echo "oracle: $unbake is missing; pyproject.toml declares unbake in [oracle], rebuild .venv-unbake" >&2; exit 1; }
+  deps=$state/oracle-deps
+  steps=$state/oracle-steps
   build=$state/oracle/$sha
-  if [ -x "$build/n64host" ] && [ "$(readlink -f "$link")" = "$(readlink -f "$build")" ]; then
+  n=hosts/n64recomp
+  mkdir -p "$state/oracle" "$deps" "$steps"
+  exec 9> "$state/oracle.lock"  # the state is shared by every worktree: a second build waits here until the first exits
+  flock 9
+  depskey=$(inputs $n/PINS $n/patches $n/deps.sh $n/checkout.sh)
+  recompkey=$(inputs $n/PINS $n/patches $n/recompile.sh $n/decomp_elf.sh $n/recomp_profile.py $n/HOST_KEPT $n/ragewars.profile.json $n/host_config.py src pyproject.toml)-$depskey-$(wc -c < "$rom")
+  hostkey=$(inputs $n)-$recompkey
+  if [ -x "$build/n64host" ] && [ "$(cat "$build/key" 2>/dev/null)" = "$hostkey" ] && [ "$(readlink -f "$link")" = "$(readlink -f "$build")" ]; then
     echo "oracle: $build is live already, build skipped"
     exit 0
   fi
-  mkdir -p "$state/oracle" "$state/oracle-deps"
-  rm -rf "$build"
-  mkdir "$build"
-  trap 'rc=$?; test "$rc" = 0 || rm -rf "$build"' EXIT
-  timed deps sh hosts/n64recomp/deps.sh "$state/oracle-deps"
-  mkdir -p "$state/tools"
-  timed abumas make -C "$state/oracle-deps/AbuMas" -j"$jobs"
-  install -m 755 "$state/oracle-deps/AbuMas/build/abumas" "$state/tools/abumas"
-  "$py" hosts/n64recomp/host_config.py "$host" "$state" --abumas "$state/tools/abumas"
-  mkdir "$build/deps"
-  cp -a "$state/oracle-deps/N64ModernRuntime" "$state/oracle-deps/rt64" "$state/oracle-deps/N64Recomp" "$build/deps/"
-  rm -rf "$build/deps/N64Recomp/build"
-  timed recompile sh hosts/n64recomp/recompile.sh "$build" "$root" "$decomp" "$profile" "$version" "$py" "$unbake" "$host" "$jobs"
-  gen=$build/recomp/$version
-  PYTHONPATH=$root/src "$py" -m cake_taste --profile "$build/taste-profile.json" recomp facts --version "$version" --output "$facts"
-  cmake -S hosts/n64recomp -B "$build/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=/usr/bin/gcc-14 -DCMAKE_CXX_COMPILER=/usr/bin/g++-14 \
-    -DN64R_GEN_DIR="$gen" -DN64R_PINS="$root/hosts/n64recomp/PINS" -DN64R_PROFILE="$facts" \
-    -DN64R_REFUSED="$gen/refused.tsv" \
-    -DN64R_RT64_SRC="$build/deps/rt64" -DN64R_RUNTIME_SRC="$build/deps/N64ModernRuntime" \
-    -DFETCHCONTENT_FULLY_DISCONNECTED=ON
-  timed host-build cmake --build "$build/build" -j"$jobs"
-  install -m 755 "$build/build/n64host" "$build/n64host"
-  mkdir "$build/gen"
-  install -m 644 "$build/build/gen/cpu_profile.h" "$build/build/gen/cpu_native.h" "$gen/symbols.toml" "$build/gen/"
-  install -m 644 "$build/decomp/versions/$version/symbol_addrs.txt" "$build/gen/"
-  "$py" - "$sha" "$build/gen" "$facts" "$(git -C "$build/decomp" rev-parse HEAD)" > "$build/oracle-pins.json" <<'PY'
+  # ccache the way RageWarsEnhanced's cmake/ccache.cmake does: base_dir and hash_dir ride in the launcher, and the root is
+  # mapped out of the objects, so the same commit at another path hits
+  set --
+  if command -v ccache > /dev/null; then
+    ccache=$(command -v ccache)
+    set -- "-DCMAKE_C_COMPILER_LAUNCHER=$ccache;base_dir=$root;hash_dir=false" "-DCMAKE_CXX_COMPILER_LAUNCHER=$ccache;base_dir=$root;hash_dir=false" \
+      "-DCMAKE_C_FLAGS=-ffile-prefix-map=$root=/src/cake-taste" "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=$root=/src/cake-taste"
+  fi
+  step deps "$depskey" sh $n/deps.sh "$deps"
+  step abumas "$depskey" build_abumas
+  "$upy" $n/host_config.py "$host" "$state" --abumas "$state/tools/abumas"
+  rc=$state/oracle-recomp/$recompkey
+  mkdir -p "$rc"
+  step recompile "$recompkey" sh $n/recompile.sh "$rc" "$root" "$decomp" "$profile" "$version" "$rom" "$py" "$unbake" "$host" "$jobs" "$deps" "$@"
+  gen=$rc/recomp/$version
+  "$py" $n/kept_audit.py "$gen/funcs"  # no kept libultra original the generated code reaches may read a KSEG1 0xA4xxxxxx register
+  PYTHONPATH=$root/src "$py" -m cake_taste --profile "$rc/taste-profile.json" recomp facts --version "$version" --output "$facts"
+  step host-build "$hostkey-$(sha256sum "$facts" | cut -c1-16)" host_build "$@"
+  fin=$build.partial
+  rm -rf "$fin"
+  mkdir -p "$fin/gen"
+  install -m 755 "$state/oracle-host/n64host" "$fin/n64host"
+  install -m 644 "$state/oracle-host/gen/cpu_profile.h" "$state/oracle-host/gen/cpu_native.h" "$gen/symbols.toml" "$fin/gen/"
+  install -m 644 "$rc/decomp/versions/$version/symbol_addrs.txt" "$fin/gen/"
+  "$py" - "$sha" "$fin/gen" "$facts" "$(git -C "$rc/decomp" rev-parse HEAD)" > "$fin/oracle-pins.json" <<'PY'
 import hashlib, json, pathlib, sys, time
 gen = {n: hashlib.sha256((pathlib.Path(sys.argv[2]) / n).read_bytes()).hexdigest() for n in ("cpu_profile.h", "cpu_native.h")}
 decomp = {"commit": sys.argv[4],
@@ -109,10 +161,13 @@ decomp = {"commit": sys.argv[4],
 print(json.dumps({"cake_taste": sys.argv[1], "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "gen": gen,
                   "decomp": decomp, "facts": hashlib.sha256(pathlib.Path(sys.argv[3]).read_bytes()).hexdigest()}, indent=1))
 PY
-  rm -rf "$build/deps" "$build/build" "$build/decomp" "$build/recomp" "$build/taste-run"
-  timed selfcheck selfcheck "$build/n64host"
+  echo "$hostkey" > "$fin/key"
+  timed selfcheck selfcheck "$fin/n64host"
+  rm -rf "$build"
+  mv "$fin" "$build"
   ln -sfn "$build" "$link.new"
   mv -T "$link.new" "$link"
+  for old in "$state"/oracle-recomp/*; do test "$old" = "$rc" || rm -rf "$old"; done
   echo "oracle: $build live"
 }
 

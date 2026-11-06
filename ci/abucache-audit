@@ -10,7 +10,7 @@ src/cake_taste/repro/capture.py
 src/cake_taste/repro/gdb_capture_many.py
 src/cake_taste/repro/runner.py'
 new="$(grep -rlEi --include='*.py' --include='*.sh' --include='*.mk' --include=Makefile --exclude='test_*.py' \
-    --exclude-dir=tests --exclude-dir=.git --exclude-dir=build --exclude-dir=.venv --exclude-dir=.state \
+    --exclude-dir=tests --exclude-dir=.git --exclude-dir=build --exclude-dir=.venv --exclude-dir=.venv-unbake --exclude-dir=.state \
     -e 'ProcessPoolExecutor|ThreadPoolExecutor|multiprocessing\.Pool|\bccache\b|functools\.(lru_)?cache\b|@(lru_)?cache\b' \
     -e 'fcntl\.flock|\bflock\b|os\.cpu_count|sched_getaffinity|time\.perf_counter|time\.monotonic' . \
     | sed 's#^\./##' | grep -vxF "$OWNED" || true)"

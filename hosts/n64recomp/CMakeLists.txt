@@ -53,7 +53,7 @@ n64host_require_runtime_patch("${_rt64_src}"
 # (weak: a runtime that implements the same name, such as osGetCount, wins).
 # N64R_REFUSED is an optional TSV (header line, then name<TAB>reason).
 set(_stub_c "#include \"recomp.h\"\nvoid n64host_unimplemented(const char*);\n")
-set(_stub_h "#pragma once\n")
+set(_stub_h "#pragma once\n#include \"recomp.h\"\n")
 if(NOT "${N64R_REFUSED}" STREQUAL "")
   file(STRINGS "${N64R_REFUSED}" _ref)
   list(POP_FRONT _ref)
@@ -119,7 +119,8 @@ add_executable(n64host
   tlb.c golden.cpp lockstep.cpp replay.cpp fault_adapter.cpp main.cpp render_rt64.cpp audio_sdl.cpp input_sdl.cpp libultra_gaps.c init_adapter.c addrmap.c cop0_adapter.c pi_adapter.cpp vi_adapter.cpp tlb_adapter.c si_adapter.cpp si_timing.cpp queue_trace.cpp cpu_scheduler.cpp view.cpp
   ${CMAKE_BINARY_DIR}/gen/refused_stubs.c
   ${GEN_FUNCS} ${N64R_GEN_DIR}/rsp/rsp_audio.cpp)
-set_source_files_properties(${GEN_FUNCS} PROPERTIES COMPILE_OPTIONS "-w;-O1")
+# N64Recomp declares no function it refused, yet other generated functions call them (gcc 14 rejects an implicit declaration).
+set_source_files_properties(${GEN_FUNCS} PROPERTIES COMPILE_OPTIONS "-w;-O1;-include;${CMAKE_BINARY_DIR}/gen/refused_decls.h;-include;${N64R_GEN_DIR}/funcs/recomp_decls.h")
 target_include_directories(n64host PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/probe ${CMAKE_BINARY_DIR}/gen
   ${N64R_GEN_DIR}/funcs ${_rt_src}/N64Recomp/include ${_rt64_src}/include
@@ -129,7 +130,7 @@ find_package(SDL2 REQUIRED)
 target_link_libraries(n64host PRIVATE librecomp ultramodern rt64 ${SDL2_LIBRARIES})
 target_compile_definitions(n64host PRIVATE HLSL_CPU FFX_GCC RT64_SDL_WINDOW_VULKAN IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
 target_link_options(n64host PRIVATE -Wl,--wrap=osInitialize_recomp -Wl,--wrap=__osInitialize_common_recomp -Wl,--wrap=osGetMemSize_recomp
-  -Wl,--wrap=osUnmapTLBAll_recomp -Wl,--wrap=cop0_status_write
+  -Wl,--wrap=osUnmapTLBAll_recomp -Wl,--wrap=osVirtualToPhysical_recomp -Wl,--wrap=cop0_status_write
   -Wl,--wrap=osSetEventMesg_recomp -Wl,--wrap=__osPiRawStartDma_kept
   -Wl,--wrap=System_CreateVideoManager
   -Wl,--wrap=osRecvMesg_recomp -Wl,--wrap=osSendMesg_recomp

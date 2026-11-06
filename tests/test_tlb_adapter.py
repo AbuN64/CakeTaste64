@@ -33,10 +33,16 @@ static unsigned faults;
 static uint8_t ram[0x800000];
 void n64host_addrmap_init(void);
 uint8_t *n64host_xlate_slow(uint8_t*,uint32_t);
+int32_t n64host_func_vram(uint8_t*,int32_t);
+int32_t n64host_func_alias(int32_t);
 void osMapTLB_recomp(uint8_t*,recomp_context*);
 void osUnmapTLB_recomp(uint8_t*,recomp_context*);
 void __wrap_osUnmapTLBAll_recomp(uint8_t*,recomp_context*);
 void __osProbeTLB_recomp(uint8_t*,recomp_context*);
+void __wrap_osVirtualToPhysical_recomp(uint8_t*,recomp_context*);
+static unsigned real_calls;
+void __real_osVirtualToPhysical_recomp(uint8_t*r,recomp_context*c){
+ (void)r;++real_calls;c->r2=(uint32_t)c->r4&0x1fffffffu;}
 void n64host_tlb_fault(uint8_t *r,uint32_t va) {
  assert(r==ram && va==0x810034); ++faults;
  if (getenv("NO_MAP")) return;
@@ -57,6 +63,15 @@ int main(int argc,char **argv) {
  osMapTLB_recomp(ram,&c);
  assert(n64host_xlate_slow(ram,0x810037)==ram+0x20037);
  assert(n64host_xlate_slow(ram,0x811fff)==ram+0x21fff);
+ // osVirtualToPhysical of a TLB-mapped KUSEG buffer (regression slice: the runtime returned the KUSEG address
+ // unchanged, so
+ // the RSP read the audio command list's pointers from the wrong physical address); KSEG0/KSEG1 stay the runtime's; an
+ // unmapped page answers -1 like the original's __osProbeTLB.
+ c.r4=0x810037; __wrap_osVirtualToPhysical_recomp(ram,&c); assert(c.r2==0x20037 && real_calls==0);
+ c.r4=0x811fff; __wrap_osVirtualToPhysical_recomp(ram,&c); assert(c.r2==0x21fff && real_calls==0);
+ c.r4=0x80001234; __wrap_osVirtualToPhysical_recomp(ram,&c); assert(c.r2==0x1234 && real_calls==1);
+ c.r4=0xa0000020; __wrap_osVirtualToPhysical_recomp(ram,&c); assert(c.r2==0x20 && real_calls==2);
+ c.r4=0x900000; __wrap_osVirtualToPhysical_recomp(ram,&c); assert(c.r2==(gpr)-1 && real_calls==2);
  c.r4=0x811044; __osProbeTLB_recomp(ram,&c); assert(c.r2==0x21044);
  c.r4=2; osUnmapTLB_recomp(ram,&c);
  assert(n64host_tlb_probe(0x810000)==0xffffffff);
@@ -73,6 +88,17 @@ int main(int argc,char **argv) {
  assert(n64host_tlb_probe(0x200010)==0x10); // Wired entry survives.
  assert(n64host_tlb_probe(0x3fffff)==0x1fffff);
  assert(n64host_xlate_slow(ram,0xa0000020)==ram+0x20);
+ // Regression slice of the resource-load worker's jalr to 0x0044E584 (Scene_ScaleDefinitionFields' KUSEG entry; the
+ // game packs callback addresses to 24 bits and its pager maps the page): the indirect-call lookup translates a KUSEG
+ // target through the guest TLB like a load, then names the function by its KSEG0 link label (the code is linked at
+ // the virtual address, whatever physical page holds it); KSEG0 targets stay as they are.
+ assert(n64host_func_alias(0x44E584)==0x44E584 && faults==1);  // unmapped: no fault is served, the address is unchanged
+ n64host_tlb_map(4,0,0x44E000,0x4E000,0x4F000);  // a physical page that is not the label's
+ assert(n64host_func_vram(ram,0x44E584)==(int32_t)0x8044E584 && faults==1);
+ assert(n64host_func_vram(ram,0x200000+0x934F0)==(int32_t)0x802934F0 && faults==1);  // boot window
+ assert(n64host_func_alias(0x44E584)==(int32_t)0x8044E584);
+ assert(n64host_func_vram(ram,(int32_t)0x80255220)==(int32_t)0x80255220);
+ n64host_tlb_unmap(4);
  assert(n64host_xlate_slow(ram,0xffffffc0)!=ram && faults==1);
  c.r4=0x810000; __osProbeTLB_recomp(ram,&c); assert(c.r2==(gpr)-1);
 }

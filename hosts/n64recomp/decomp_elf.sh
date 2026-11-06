@@ -12,10 +12,14 @@ decomp=${1:?usage: decomp_elf.sh DECOMP DEST VERSION UNBAKE HOST JOBS} dest=${2:
 here=$(cd "$(dirname "$0")" && pwd)
 pin=$(awk '$1 == "RageWars" { print $2 }' "$here/PINS")
 test -n "$pin" || { echo "decomp_elf: PINS has no RageWars line" >&2; exit 1; }
-git clone -q --no-checkout "$decomp" "$dest"
-git -C "$dest" checkout -q --detach "$pin"
+if [ ! -d "$dest/.git" ]; then  # made beside DEST and renamed, so a kill leaves no half-made DEST; a finished DEST is kept and make resumes
+  rm -rf "$dest.clone"
+  git clone -q --no-checkout "$decomp" "$dest.clone"
+  git -C "$dest.clone" checkout -q --detach "$pin"
+  cp -a "$decomp/roms" "$dest.clone/roms"
+  mv "$dest.clone" "$dest"
+fi
 test "$(git -C "$dest" rev-parse HEAD)" = "$pin"
-cp -a "$decomp/roms" "$dest/roms"
 (cd "$dest" && "$unbake" --host "$host" setup --no-make)
 test -s "$dest/local.mk"
 make -C "$dest" -j"$jobs" "build/$version/RageWars.elf"

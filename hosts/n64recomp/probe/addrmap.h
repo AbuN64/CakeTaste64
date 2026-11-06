@@ -8,7 +8,8 @@
 extern "C" {
 #endif
 uint8_t *n64host_xlate_slow(uint8_t *rdram, uint32_t va);
-int32_t n64host_func_vram(int32_t va);
+int32_t n64host_func_vram(uint8_t *rdram, int32_t va);
+int32_t n64host_func_alias(int32_t va);
 // Function-replay recorder (replay.cpp): while a sampled call runs on this thread n64host_rec_active is non-zero and
 // every guest access goes through it; otherwise the accessors below are the plain translation.
 extern __thread int n64host_rec_active;
@@ -53,7 +54,7 @@ static inline void n64host_sd(uint8_t *rdram, uint64_t va, uint64_t value) {
 #define SD(val, offset, reg) n64host_sd(rdram, (reg) + (offset), (uint64_t)(gpr)(val))
 #define LD(offset, reg) n64host_ld(rdram, (reg) + (offset))
 #undef LOOKUP_FUNC
-#define LOOKUP_FUNC(val) get_function(n64host_func_vram((int32_t)(val)))
+#define LOOKUP_FUNC(val) get_function(n64host_func_vram(rdram, (int32_t)(val)))
 
 #ifdef __RECOMP_H__
 #include "unaligned.h"

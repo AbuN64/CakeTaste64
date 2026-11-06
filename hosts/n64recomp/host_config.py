@@ -4,7 +4,7 @@
 The operator's ~/.config/unbake/unbake.toml is never read or edited. Every value comes from this host or the tree:
 tools on PATH (git, make, cpp, the mips binutils, splat; armips only when found), abumas as given (ci/oracle builds it),
 the cache and toolchain folders inside STATE (the tree's git-ignored state), cores and workers "auto", and the memory
-limits from what the host has (/proc/meminfo), never a literal. Run with the python of the venv that holds unbake."""
+limits from what the host has (/proc/meminfo), never a literal. Run with the python of .venv-unbake."""
 
 import argparse
 import os

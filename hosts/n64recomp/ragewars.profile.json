@@ -5,12 +5,18 @@
  "runtime_root": "../../.state/taste-run",
  "output_root": "../../.state/taste-run",
  "recomp": {
+  "recomp_include": "#include \"recomp.h\"\n#include \"probe.h\"",
   "decomp_root": "../../../RageWarsDecomp",
   "layout_glob": "versions/{version}/splat.yaml",
   "symbols_file": "versions/{version}/symbol_addrs.txt",
   "elf": "build/{version}/RageWars.elf",
   "roms": {
    "us-rev1": "../../../RageWarsDecomp/roms/baserom.us-rev1.z64"
+  },
+  "input_bindings": "ragewars.input.json",
+  "rdram_size": {
+   "bytes": 8388608,
+   "source": "hosts/n64recomp/RUNTIME.md N64R_PAK: the host's console is the 8 MB Expansion Pak one; osMemSize (0x80000318) only receives it"
   },
   "gen_root": "../../.state/recomp",
   "tools": {
@@ -20,8 +26,9 @@
   "rsp_audio": {
    "segment": "rsp_audio_code",
    "function": "rsp_audio",
-   "execution_vram": 67112960,
-   "source": "versions/us-rev1/splat.yaml segment rsp_audio_code (rom 0xDFE30); the audio microcode is loaded to RSP IMEM at 0x04001000"
+   "data_segment": "rsp_audio_data",
+   "boot_segment": "rsp_boot",
+   "source": "versions/us-rev1/splat.yaml segment rsp_audio_code (rom 0xDFE30); the boot microcode (segment rsp_boot, osSpTaskLoad's ucode_boot) loads the audio microcode text to the IMEM offset its `addi rt,$zero,imm` / `jr rt` pair names, read from the ROM, so every jal/jump-table address is text offset + that offset"
   }
  }
 }

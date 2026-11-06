@@ -26,3 +26,12 @@ void __osProbeTLB_recomp(uint8_t *rdram, recomp_context *ctx) {
     (void)rdram;
     ctx->r2 = (gpr)(int32_t)n64host_tlb_probe((uint32_t)ctx->r4);
 }
+// osVirtualToPhysical is the runtime's (ultramodern/src/misc_ultra.cpp), which maps KSEG0 and KSEG1 only and returns a
+// KUSEG address unchanged ("TODO handle TLB mappings"). The original walks the TLB with __osProbeTLB and answers -1 for
+// an unmapped page, so a KUSEG or KSEG2 address goes through the same TLB the generated loads use (probe.h).
+void __real_osVirtualToPhysical_recomp(uint8_t *rdram, recomp_context *ctx);
+void __wrap_osVirtualToPhysical_recomp(uint8_t *rdram, recomp_context *ctx) {
+    uint32_t va = (uint32_t)ctx->r4;
+    if (va - 0x80000000u < 0x40000000u) { __real_osVirtualToPhysical_recomp(rdram, ctx); return; }
+    ctx->r2 = (gpr)(int32_t)n64host_tlb_probe(va);
+}

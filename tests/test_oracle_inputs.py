@@ -7,7 +7,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from importlib import resources
 from pathlib import Path
 
 import jsonschema
@@ -57,27 +56,154 @@ class RageWarsProfile(unittest.TestCase):
         self.assertEqual(found.symbols_path("us-rev1"), workspace / "RageWarsDecomp/versions/us-rev1/symbol_addrs.txt")
         self.assertEqual(found.elf_path("us-rev1"), workspace / "RageWarsDecomp/build/us-rev1/RageWars.elf")
         self.assertEqual(found.rom("us-rev1"), workspace / "RageWarsDecomp/roms/baserom.us-rev1.z64")
-        self.assertEqual((found.rsp_segment, found.rsp_function, found.rsp_execution_vram),
-                         ("rsp_audio_code", "rsp_audio", 0x04001000))
+        self.assertEqual(
+            (found.rsp_segment, found.rsp_function, found.rsp_execution_vram, found.rsp_boot_segment),
+            ("rsp_audio_code", "rsp_audio", None, "rsp_boot"),  # the load address is read from the boot ucode
+        )
+
+    def test_the_generated_functions_include_the_host_address_map_so_kuseg_loads_translate(self):
+        """Regression: without recomp_include every generated load was N64Recomp's plain rdram + address, so the
+        first KUSEG
+        access of boot-idle (Sound_InitializeContext: lw v1, 4(v0) with v0 = 0x00800000, the pager's page 0x800 reply)
+        read 0x80800004 bytes past the RDRAM base and segfaulted. probe.h redefines MEM_* through the host
+        address map, and
+        needs recomp.h before it (addrmap.h's unaligned accessors hang on __RECOMP_H__)."""
+        found = settings.load(load_profile(self.layout()))
+        self.assertEqual(found.recomp_include.splitlines(), ['#include "recomp.h"', '#include "probe.h"'])
+        self.assertTrue((ROOT / "hosts/n64recomp/probe/probe.h").is_file())
+        text = (ROOT / "hosts/n64recomp/probe/addrmap.h").read_text()
+        for macro in ("MEM_W", "MEM_H", "MEM_B", "MEM_HU", "MEM_BU", "SD", "LD"):
+            self.assertIn(f"#define {macro}(", text)
 
     def test_the_derived_profile_makes_the_relative_rom_absolute_beside_the_live_file(self):
         loaded = self.layout()
-        self.assertEqual(recomp_profile.beside(str(loaded), "../../../RageWarsDecomp/roms/x.z64"),
-                         str(loaded.parents[3] / "RageWarsDecomp/roms/x.z64"))
+        self.assertEqual(
+            recomp_profile.beside(str(loaded), "../../../RageWarsDecomp/roms/x.z64"),
+            str(loaded.parents[3] / "RageWarsDecomp/roms/x.z64"),
+        )
+
+    # one name per HOST_KEPT family: a family that matches nothing stops the derivation
+    KEPT_SAMPLES = ("osContInit", "osMotorInit", "osPfsInit", "osPiStartDma", "osCartRomInit", "osCreatePiManager")
+
+    def derive(self, runtime_names, rom="/main/RageWarsDecomp/roms/baserom.us-rev1.z64"):
+        """The derived profile for a pinned decomp, N64Recomp and runtime that all name `runtime_names`."""
+        import contextlib
+        import io
+
+        loaded = self.layout()
+        build = loaded.parents[3] / "build"
+        names = sorted({*runtime_names, *self.KEPT_SAMPLES})
+        (build / "deps/N64Recomp/src").mkdir(parents=True)
+        (build / "deps/N64Recomp/src/symbol_lists.cpp").write_text(
+            "reimplemented_funcs {\n" + "".join(f' "{n}",\n' for n in names) + "};\nignored_funcs {\n};\n"
+        )
+        (build / "deps/N64ModernRuntime").mkdir(parents=True)
+        (build / "deps/N64ModernRuntime/runtime.cpp").write_text(
+            "".join(f"void {n}_recomp(uint8_t* rdram, recomp_context* ctx) {{\n}}\n" for n in names)
+        )
+        symbols = build / "decomp/versions/us-rev1/symbol_addrs.txt"
+        symbols.parent.mkdir(parents=True)
+        symbols.write_text(
+            "".join(f"{n} = 0x{0x80300000 + 0x100 * i:08X}; // type:func\n" for i, n in enumerate(names))
+        )
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            recomp_profile.main(str(loaded), str(build), "us-rev1", rom)
+        return loaded, build, json.loads(out.getvalue())["recomp"]
+
+    def test_the_derived_profile_names_the_rom_ci_oracle_found_not_a_path_beside_the_worktree(self):
+        """A run worktree (Runs/<card>/Projects/AbuN64/CakeTaste64) has no RageWarsDecomp beside it, so the
+        tracked profile's relative ROM path points at a file that is not there; the ROM ci/oracle derived from
+        git-common-dir wins."""
+        names = {"osViSwapBuffer", "osSpTaskStartGo", "osDpSetNextBuffer", "osVirtualToPhysical"}
+        rom = "/main/RageWarsDecomp/roms/baserom.us-rev1.z64"
+        loaded, build, derived = self.derive(names, rom)
+        self.assertEqual(derived["roms"], {"us-rev1": rom})
+        self.assertEqual({e["name"] for e in derived["symbol_names"]["us-rev1"].values()}, names)
+        self.assertEqual(derived["decomp_root"], f"{build}/decomp")
+        self.assertEqual(derived["input_bindings"], str(loaded.parent / "ragewars.input.json"))
+
+    def test_the_generated_functions_see_the_declarations_of_the_functions_n64recomp_refused(self):
+        """Libsn_* call Libgultra_TrwReadTlbEntry, which N64Recomp refused and so never declares: gcc 14 fails
+        on the implicit declaration."""
+        cmake = (ROOT / "hosts/n64recomp/CMakeLists.txt").read_text()
+        self.assertIn(r'set(_stub_h "#pragma once\n#include \"recomp.h\"\n")', cmake)
+        self.assertRegex(
+            cmake,
+            r'set_source_files_properties\(\$\{GEN_FUNCS\} PROPERTIES COMPILE_OPTIONS "[^"]*-include;\$\{CMAKE_BINARY_DIR\}/gen/refused_decls\.h[";]',  # noqa: E501
+        )
+
+    def test_the_recompile_step_key_reads_every_file_the_derived_profile_comes_from(self):
+        """HOST_KEPT decides which libultra originals the recompile keeps from the runtime's: a change to it
+        must redo the recompile."""
+        oracle = (ROOT / "ci/oracle").read_text()
+        key = next(line for line in oracle.splitlines() if line.strip().startswith("recompkey="))
+        for name in ("HOST_KEPT", "ragewars.profile.json", "recomp_profile.py"):
+            self.assertIn(name, key)
+
+    def test_every_libultra_original_the_host_wraps_as_recomp_is_a_runtime_function_of_the_profile(self):
+        """The host wraps `<name>_recomp` only for a function the recompile swaps for the runtime's (the derived
+        symbol_names): left out, the original is kept as `<name>_kept`, the wrap never binds and the original runs. The
+        boot-idle run segfaulted so, in __osSiDeviceBusy_kept under osInitialize_kept (SI_STATUS at 0xA4800018,
+        unmapped). Only a HOST_KEPT family may keep a wrapped function."""
+        cmake = (ROOT / "hosts/n64recomp/CMakeLists.txt").read_text()
+        wrapped = set(re.findall(r"--wrap=(\w+)_recomp\b", cmake))
+        for source in [*(ROOT / "hosts/n64recomp").glob("*.c"), *(ROOT / "hosts/n64recomp").glob("*.cpp")]:
+            wrapped |= set(
+                re.findall(
+                    r"^(?:extern \"C\" )?void (?!__wrap_|__real_)(\w+)_recomp\(uint8_t", source.read_text(), re.M
+                )
+            )
+        absent_from_the_decomp = {
+            "__osInitialize_common",
+            "osGetMemSize",
+        }  # the decomp names neither; the wrap binds nothing
+        wrapped -= absent_from_the_decomp
+        self.assertIn("osInitialize", wrapped | {"osInitialize"})
+        _, _, derived = self.derive(wrapped)
+        runtime = {e["name"] for e in derived["symbol_names"]["us-rev1"].values()}
+        self.assertEqual(wrapped - runtime, set())
+
+    def test_the_generated_functions_see_the_declarations_of_the_runtime_functions_the_profile_renames_to(self):
+        """A generated function that calls `<name>_recomp` (osUnmapTLBAll_recomp, defined by the runtime,
+        declared by none of its
+        headers) fails under gcc 14 as an implicit declaration unless the generated recomp_decls.h is force-included."""
+        cmake = (ROOT / "hosts/n64recomp/CMakeLists.txt").read_text()
+        self.assertRegex(
+            cmake,
+            r'set_source_files_properties\(\$\{GEN_FUNCS\} PROPERTIES COMPILE_OPTIONS "[^"]*-include;\$\{N64R_GEN_DIR\}/funcs/recomp_decls\.h"',  # noqa: E501
+        )
+
+    def test_the_host_declares_the_runtime_functions_whose_addresses_replaced_funcs_takes(self):
+        """replaced_funcs.inl lists `<name>_recomp` for every profile runtime function; osUnmapTLBAll_recomp is
+        defined by the
+        runtime but declared by no header of it, so main.cpp failed to compile until it included the generated
+        recomp_decls.h."""
+        main = (ROOT / "hosts/n64recomp/main.cpp").read_text()
+        self.assertIn('#include "recomp_decls.h"', main)
+        self.assertLess(main.index('#include "recomp_decls.h"'), main.index('#include "replaced_funcs.inl"'))
 
     def test_the_audio_function_is_the_one_the_host_cmake_compiles(self):
         self.assertIn("rsp/rsp_audio.cpp", (ROOT / "hosts/n64recomp/CMakeLists.txt").read_text())
 
 
 class HostConfig(unittest.TestCase):
-    schema = json.loads((resources.files("unbake.resources") / "schemas" / "host.schema.json").read_text())
-    template = (resources.files("unbake.resources") / "templates" / "host.toml").read_text()
+    unbake_resources = next(ROOT.glob(".venv-unbake/lib/python*/site-packages/unbake/resources"))  # ci/check makes it
+    schema = json.loads((unbake_resources / "schemas" / "host.schema.json").read_text())
+    template = (unbake_resources / "templates" / "host.toml").read_text()
 
     def render(self, abumas="/state/tools/abumas", missing=frozenset()) -> dict:
         import tomllib
 
-        text = host_config.render(self.template, Path("/state"), abumas, 12, host_config.memory_total(MEMINFO),
-                                  400_000_000_000, tools(missing))
+        text = host_config.render(
+            self.template,
+            Path("/state"),
+            abumas,
+            12,
+            host_config.memory_total(MEMINFO),
+            400_000_000_000,
+            tools(missing),
+        )
         self.assertNotIn("${", text)
         return tomllib.loads(text)
 
@@ -111,9 +237,20 @@ class HostConfig(unittest.TestCase):
     def test_the_command_writes_the_file_inside_the_state_folder(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
-        done = subprocess.run([sys.executable, str(ROOT / "hosts/n64recomp/host_config.py"), str(tmp / "unbake.toml"),
-                               str(tmp / "state"), "--abumas", str(tmp / "abumas")],
-                              capture_output=True, text=True, check=False)
+        unbake_python = str(ROOT / ".venv-unbake/bin/python")
+        done = subprocess.run(
+            [
+                unbake_python,
+                str(ROOT / "hosts/n64recomp/host_config.py"),
+                str(tmp / "unbake.toml"),
+                str(tmp / "state"),
+                "--abumas",
+                str(tmp / "abumas"),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if done.returncode:
             self.assertIn("not on PATH", done.stderr)  # a machine without the mips binutils refuses by name
             return

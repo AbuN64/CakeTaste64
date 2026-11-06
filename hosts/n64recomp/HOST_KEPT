@@ -1,0 +1,10 @@
+# The hardware paths the host's own adapters sit over the kept originals of, one family per line: a regex that must match a
+# whole libultra name, then the reason. Every other function N64Recomp lists (symbol_lists.cpp reimplemented_funcs and
+# ignored_funcs) that the decomp names and that a runtime or host source defines a <name>_recomp for goes to the runtime
+# (recomp_profile.py derives the list; nothing is kept by name in the profile). A family that matches none stops the build.
+osCont\w*	the SI is the host's: the controller hooks wrap osContInit_kept, osContStartQuery_kept, osContStartReadData_kept and osContGetQuery_kept (si_adapter.cpp), so the originals run
+osMotor\w*	the pak commands reach the controller pak through the SI path above
+osPfs\w*	the pak file system runs over the same kept SI path (osCont*, the pak commands)
+(?:__)?osE?Pi\w*	the PI is the host's: pi_adapter.cpp wraps __osPiRawStartDma_kept, so the originals above it run (osPiStartDma, osEPiStartDma, the PI access queue)
+osCartRomInit	initialises the PI handle the kept PI path above uses
+osCreatePiManager	creates the PI manager thread of the kept PI path above

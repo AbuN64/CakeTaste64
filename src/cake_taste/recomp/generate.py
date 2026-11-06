@@ -15,6 +15,7 @@ from cake_taste import TasteError
 from cake_taste.files import atomic_bytes, atomic_json, sha256_file
 
 from .asmfuncs import read_symbol_names
+from .facts import boot_facts, cpu_facts, input_facts
 from .fallthrough import link_fallthroughs
 from .indirect import hooks as indirect_hooks
 from .indirect import walked as walked_tables
@@ -371,6 +372,50 @@ def generate(settings: Settings, version: str, refused_copy: Path | None = None)
     }
 
 
+def rsp_dispatch_targets(code: bytes, data: bytes, execution: int) -> list[int]:
+    """The IMEM addresses a microcode reaches through a data jump table, read from its own bytes.
+
+    The dispatcher is `lh rt, table(rs)` then `jr rt` (a command id indexes halfword entries in DMEM data);
+    the entries run from `table` while each is a word-aligned IMEM address; those inside the code are targets
+    (an entry past the code's end has no label to jump to: reaching it stays an unhandled jump)."""
+    words = [int.from_bytes(code[i:i + 4], "big") for i in range(0, len(code) - 3, 4)]
+    lo, hi = execution & 0x1FFF, (execution & 0x1FFF) + len(code)
+    targets: set[int] = set()
+    for i, word in enumerate(words):
+        if word >> 26 != 0x21:  # lh
+            continue
+        loaded = (word >> 16) & 31
+        if not any(w >> 26 == 0 and w & 0x3F == 8 and (w >> 21) & 31 == loaded for w in words[i + 1:i + 4]):  # jr
+            continue
+        for at in range(word & 0xFFFF, len(data) - 1, 2):
+            entry = int.from_bytes(data[at:at + 2], "big")
+            if entry & 3 or not 0x1000 <= entry < 0x2000:
+                break
+            if lo <= entry < hi:
+                targets.add(entry)
+    return sorted(targets)
+
+
+def _boot_load_address(settings: Settings, version: str, layout: Layout) -> int:
+    """The IMEM address the boot microcode (osSpTaskLoad's ucode_boot) loads the task's microcode text to: the boot code
+    loads a register with `addi rt, $zero, imm`, then ends in `jr rt`, so imm is the IMEM offset the text lands at."""
+    seg = next((s for s in layout.segments if s.name == settings.rsp_boot_segment), None)
+    if seg is None:
+        raise TasteError("recomp.rsp", f"boot segment {settings.rsp_boot_segment} not found")
+    rom = settings.rom(version).read_bytes()
+    end = seg.start + layout.extent(seg, len(rom))
+    words = [int.from_bytes(rom[o:o + 4], "big") for o in range(seg.start, end, 4)]
+    jumps = [w >> 21 & 31 for w in words if w & 0xFC1FFFFF == 8]  # jr rs (funct 8)
+    # addi/addiu rt, zero, imm
+    loads = {w >> 16 & 31: w & 0xFFFF for w in words if w >> 26 in (8, 9) and w >> 21 & 31 == 0}
+    targets = {loads[r] for r in jumps if r in loads and 0x1000 <= loads[r] < 0x2000}
+    if len(targets) != 1:
+        raise TasteError(
+            "recomp.rsp", f"boot segment {seg.name}: expected one jr through an IMEM constant, found {sorted(targets)}"
+        )
+    return 0x04000000 + targets.pop()
+
+
 def _rsp(settings: Settings, version: str, layout: Layout) -> dict[str, Any]:
     if settings.rsp_rom is not None:
         # The decomp's layout does not delimit the microcode; the profile gives the sourced ROM span.
@@ -385,6 +430,8 @@ def _rsp(settings: Settings, version: str, layout: Layout) -> dict[str, Any]:
         name, start = segment.name, segment.start
         size = layout.extent(segment, settings.rom(version).stat().st_size)
         execution = settings.rsp_execution_vram
+        if settings.rsp_boot_segment is not None:
+            execution = _boot_load_address(settings, version, layout)
         if execution is None:
             execution = segment.options.get("execution_vram", segment.vram)
         if execution is None:
@@ -393,6 +440,16 @@ def _rsp(settings: Settings, version: str, layout: Layout) -> dict[str, Any]:
             )
     if execution & ~0xFFF not in (0x1000, 0x04001000) or execution & 3:
         raise TasteError("recomp.rsp", "RSP execution address must be in IMEM; ROM/storage VRAM is not executable")
+    code_bytes = settings.rom(version).read_bytes()[start:start + size]
+    derived: list[int] = []
+    if settings.rsp_data_segment is not None:
+        data_seg = next((s for s in layout.segments if s.name == settings.rsp_data_segment), None)
+        if data_seg is None:
+            raise TasteError("recomp.rsp", f"data segment {settings.rsp_data_segment} not found")
+        data_size = layout.extent(data_seg, settings.rom(version).stat().st_size)
+        data = settings.rom(version).read_bytes()[data_seg.start:data_seg.start + data_size]
+        derived = rsp_dispatch_targets(code_bytes, data, execution)
+    targets = sorted(set(settings.rsp_indirect_targets) | set(derived))
     out = settings.out(version)
     target = out / "rsp" / f"{settings.rsp_function}.cpp"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -404,7 +461,7 @@ def _rsp(settings: Settings, version: str, layout: Layout) -> dict[str, Any]:
             f"rom_file_path = {json.dumps(str(settings.rom(version)))}",
             f"output_file_path = {json.dumps(str(target))}",
             f"output_function_name = {json.dumps(settings.rsp_function)}",
-            f"extra_indirect_branch_targets = {list(settings.rsp_indirect_targets)}",
+            f"extra_indirect_branch_targets = {targets}",
             "",
         ]
     )
@@ -417,6 +474,7 @@ def _rsp(settings: Settings, version: str, layout: Layout) -> dict[str, Any]:
         "output": str(target.relative_to(out)),
         "sha256": sha256_file(target),
         "peak_rss_kb": rss,
+        "indirect_targets": targets,
     }
 
 
@@ -437,5 +495,8 @@ def oracle_facts(settings: Settings, version: str) -> dict[str, Any]:
             {"name": s.name, "rom": s.rom, "vram": s.vram, "size": s.size, "functions": len(s.functions)}
             for s in sections
         ],
+        "boot": boot_facts(settings.decomp_root, settings.symbols_path(version), version, settings.rdram_size),
+        "cpu": cpu_facts(settings.decomp_root, settings.symbols_path(version), version),
+        "input": input_facts(settings.input_bindings),
         **counts,
     }

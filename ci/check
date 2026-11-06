@@ -7,5 +7,6 @@ set -eu
 cd "$(dirname "$0")/.."
 ci/abucache-audit
 py="$(python3 ci/ensure_venv.py)"
+python3 ci/ensure_venv.py unbake >/dev/null  # tests/test_unbake_pin.py reads the unbake that ci/oracle runs
 "$py" -m ruff check src tests ci/ensure_venv.py
 "$py" -m unittest discover -s tests

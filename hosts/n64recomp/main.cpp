@@ -18,6 +18,7 @@
 #include "librecomp/rsp.hpp"
 #include "xxh3.h"
 #include "recomp_overlays.inl"
+#include "recomp_decls.h"  // the runtime functions the profile renames to: replaced_funcs.inl takes their addresses
 
 size_t n64host_rom_size;
 
@@ -100,7 +101,7 @@ recomp_func_t *find_func(uint32_t vram) {
 }
 // When the profile entrypoint was refused by the recompiler (a cop0/TLB boot stub), the profile
 // names the stub's continuation and initial stack; its TLB mappings are the address map's table.
-extern "C" int32_t n64host_func_vram(int32_t va);
+extern "C" int32_t n64host_func_alias(int32_t va);
 void configure_context(uint8_t *, recomp_context *ctx) {
     cop0_status_write(ctx, HOST_INITIAL_STATUS);
 }
@@ -114,7 +115,7 @@ void entry(uint8_t *rdram, recomp_context *ctx) {
             int32_t v = (int32_t)(section_table[s].ram_addr + section_table[s].funcs[i].offset);
             recomp::overlays::add_loaded_function(v, section_table[s].funcs[i].func);
             int32_t alias = v & 0x7FFFFFFF;
-            if (v < 0 && n64host_func_vram(alias) == v) recomp::overlays::add_loaded_function(alias, section_table[s].funcs[i].func);
+            if (v < 0 && n64host_func_alias(alias) == v) recomp::overlays::add_loaded_function(alias, section_table[s].funcs[i].func);
         }
     // Functions the profile renames to runtime replacements stay out of N64Recomp's table; guest code that
     // calls one through a stored pointer needs its address registered.

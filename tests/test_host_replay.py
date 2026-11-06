@@ -14,7 +14,7 @@ DRIVER = r"""
 typedef uint64_t gpr;
 extern "C" uint64_t n64host_golden_frame() { static uint64_t f = 0; return f; }
 extern "C" uint8_t *n64host_xlate_slow(uint8_t *, uint32_t) { static uint8_t d[16]; return d; }
-extern "C" int32_t n64host_func_vram(int32_t v) { return v; }
+extern "C" int32_t n64host_func_vram(uint8_t *, int32_t v) { return v; }
 extern "C" int n64host_replay_on;
 extern "C" void n64host_replay_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t,
                                      uint64_t, uint32_t);

@@ -1,9 +1,13 @@
 import json
 import struct
+import sys
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))  # the decomp slices test_recomp_facts quotes
+import test_recomp_facts as facts_tests
 
 from cake_taste import TasteError
 from cake_taste.recomp.cli import run
@@ -117,6 +121,8 @@ def build(root: Path, tool_body: str = "", rsp_config: dict | None = None) -> ob
                 "recomp_include": '#include "probe.h"',
                 "stubs": ["osStub"],
                 "rsp_audio": rsp_config or {"segment": "rsp_code", "function": "rsp_fn"},
+                "rdram_size": {"bytes": 0x800000, "source": "test"},
+                **({"input_bindings": self.input_bindings} if hasattr(self, "input_bindings") else {}),
             }
 
         def resolve_path(self, value):
@@ -425,9 +431,22 @@ class RecompTests(unittest.TestCase):
     def test_facts_carry_sha1_entrypoint_and_overlay_table(self):
         with tempfile.TemporaryDirectory() as t:
             profile = build(Path(t))
+            decomp = Path(t) / "decomp"
+            for name, text in {
+                    "sdk/BOOT.s": facts_tests.STUB.replace("VERSION_US_REV1", "VERSION_V1"),
+                    "include/PR/R4300.h": facts_tests.R4300, "include/PR/os_convert.h": facts_tests.CONVERT,
+                    "include/PR/os_system.h": facts_tests.SYSTEM, "sdk/libultra/io/vi/vi.CPP": facts_tests.VI_INIT,
+                    "versions/v1/libultra_names.tsv": facts_tests.NAMES,
+                    "versions/v1/symbol_addrs.txt": facts_tests.SYMBOLS}.items():
+                (decomp / name).parent.mkdir(parents=True, exist_ok=True)
+                (decomp / name).write_text(text)
+            (Path(t) / "bindings.json").write_text('{"input": {"minimum_press_ms": 80}}')
+            profile.input_bindings = "bindings.json"
             out = Path(t) / "oracle.json"
             facts = run(profile, ("facts", "--version", "v1", "--output", str(out)))
             self.assertEqual(json.loads(out.read_text()), facts)
+        self.assertEqual(facts["boot"]["sp"], 0x803FFFC0)
+        self.assertEqual(facts["input"]["minimum_press_ms"], 80)
         self.assertEqual(facts["entrypoint"], 0x80200400)
         self.assertEqual(facts["header_entrypoint"], 0x80200400)
         self.assertEqual([o["name"] for o in facts["overlays"]], ["ovl_a", "ovl_b"])

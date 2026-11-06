@@ -1,5 +1,6 @@
 // Guest virtual time from the logical work count (RUNTIME.md "Virtual guest time"), and cooperative interrupt
 // delivery at guest function entries.
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -11,10 +12,39 @@
 #include "cpu_native.h"
 
 void dequeue_external_messages(uint8_t *rdram);
+extern "C" uint64_t n64host_golden_frame();
 uint8_t *n64host_rdram;
 
 namespace {
 thread_local HostCpuBudget budget;
+
+// The guest nanoseconds one charged entry advances, measured at the host's own start (RUNTIME.md "Virtual guest time"):
+// over the first HOST_VI_HZ retraces (one second of VI time) entries are charged a provisional amount that only keeps
+// the clock live; the measured charge is then the window's VI time over the entries it ran. Both inputs are logical
+// (entries and retraces), so the result is the same on every host and load.
+constexpr double kProvisionalEntriesPerVi = 100000;  // liveness bound for the window only, replaced once measured
+constexpr double kViPeriodNs = 1e9 / HOST_VI_HZ;
+std::atomic<uint64_t> window_entries{0};
+std::atomic<uint64_t> window_start_frame{0};
+std::atomic<bool> window_open{false};
+std::atomic<bool> calibrated{false};
+std::atomic<double> measured_ns{kViPeriodNs / kProvisionalEntriesPerVi};
+
+double entry_charge_ns() {
+    if (calibrated.load(std::memory_order_acquire)) return measured_ns.load(std::memory_order_relaxed);
+    const uint64_t frame = n64host_golden_frame();
+    if (!window_open.load()) {
+        if (frame == 0) return measured_ns.load();
+        window_start_frame.store(frame);
+        window_open.store(true);
+    }
+    const uint64_t entries = ++window_entries;
+    if (frame - window_start_frame.load() >= HOST_VI_HZ) {
+        measured_ns.store(kViPeriodNs * HOST_VI_HZ / double(entries), std::memory_order_relaxed);
+        calibrated.store(true, std::memory_order_release);
+    }
+    return measured_ns.load(std::memory_order_relaxed);
+}
 
 void service_interrupts() {
     if (!budget.interrupts_enabled) return;
@@ -55,7 +85,7 @@ extern "C" int n64host_charged(const char *name) {
 // restore (never charged). Each delivers due interrupts.
 extern "C" void n64host_cpu_tick(int charged) {
     if (!n64host_rdram || !ultramodern::this_thread()) return;
-    if (charged) ultramodern::vclock_advance(budget.charge_entry(HOST_GUEST_NS_PER_ENTRY));
+    if (charged) ultramodern::vclock_advance(budget.charge_entry(entry_charge_ns()));
     service_interrupts();
 }
 
