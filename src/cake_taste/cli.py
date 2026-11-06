@@ -17,7 +17,7 @@ from abucache import stages as cache_stages
 from cake_taste import TasteError
 from cake_taste.config import Profile, load_profile
 
-DOMAINS = ("media", "logs", "repro", "catalog", "recomp", "trace", "handoff")
+DOMAINS = ("media", "logs", "repro", "catalog", "recomp", "trace", "handoff", "oracle")
 
 
 class _Parser(argparse.ArgumentParser):

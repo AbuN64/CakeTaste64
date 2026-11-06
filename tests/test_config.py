@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from dataclasses import FrozenInstanceError
@@ -37,6 +38,24 @@ class ConfigTests(unittest.TestCase):
     def load(self):
         self.file.write_text(json.dumps(self.value))
         return load_profile(self.file)
+
+    def test_worktree_profile_resolves_against_the_main_tree(self) -> None:
+        main, wt = self.root / "work" / "Main", self.root / "wt"
+        (self.root / "work" / "Sibling").mkdir(parents=True)
+        (main / "hosts").mkdir(parents=True)
+        profile = main / "hosts" / "p.json"
+        self.value.update(project_root="../../Sibling", runtime_root="../.state/run", output_root="../.state/run")
+        profile.write_text(json.dumps(self.value))
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.lan", "-C", str(main)]
+        subprocess.run([*git, "init", "-q"], check=True)
+        subprocess.run([*git, "add", "."], check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "profile"], check=True)
+        subprocess.run([*git, "worktree", "add", "-q", "-b", "card", str(wt)], check=True)
+        loaded = load_profile(wt / "hosts" / "p.json")
+        self.assertEqual(loaded.source_file, (wt / "hosts" / "p.json").resolve())
+        self.assertEqual(loaded.project_root, (self.root / "work" / "Sibling").resolve())
+        self.assertEqual(loaded.runtime_root, (main / ".state" / "run").resolve())
+        self.assertEqual(load_profile(profile).project_root, loaded.project_root)
 
     def test_explicit_paths_and_fresh_sections(self) -> None:
         profile = self.load()

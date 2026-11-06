@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,12 +58,31 @@ class Profile:
         }
 
 
+def _base(file: Path) -> Path:
+    """The folder a profile's relative paths start from: the profile's own folder, or, for a profile tracked in a git
+    worktree (a run's), the same folder of the main working tree (`git rev-parse --git-common-dir`, the way ci/oracle
+    finds its ROM), because a worktree has no sibling repositories and no .state of its own."""
+    git = ["git", "-C", str(file.parent), "rev-parse", "--path-format=absolute"]
+    try:
+        top = subprocess.run([*git, "--show-toplevel"], capture_output=True, text=True, check=False)
+        common = subprocess.run([*git, "--git-common-dir"], capture_output=True, text=True, check=False)
+    except OSError:
+        return file.parent
+    if top.returncode or common.returncode:
+        return file.parent
+    main = Path(common.stdout.strip()).parent
+    try:
+        return main / file.parent.relative_to(Path(top.stdout.strip()).resolve())
+    except ValueError:
+        return file.parent
+
+
 def _path(file: Path, key: str, value: Any) -> Path:
     if not isinstance(value, str) or not value.strip() or "\0" in value:
         raise ConfigError(file, key, "expected a nonempty path string")
     try:
         path = Path(value).expanduser()
-        return (path if path.is_absolute() else file.parent / path).resolve()
+        return (path if path.is_absolute() else _base(file) / path).resolve()
     except (OSError, RuntimeError) as exc:
         raise ConfigError(file, key, str(exc)) from exc
 

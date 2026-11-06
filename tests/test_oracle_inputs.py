@@ -187,10 +187,15 @@ class RageWarsProfile(unittest.TestCase):
         self.assertIn("rsp/rsp_audio.cpp", (ROOT / "hosts/n64recomp/CMakeLists.txt").read_text())
 
 
+UNBAKE_RESOURCES = next(ROOT.glob(".venv-unbake/lib/python*/site-packages/unbake/resources"), None)
+
+
+@unittest.skipIf(UNBAKE_RESOURCES is None, "no .venv-unbake in this tree: the repository check makes it")
 class HostConfig(unittest.TestCase):
-    unbake_resources = next(ROOT.glob(".venv-unbake/lib/python*/site-packages/unbake/resources"))  # ci/check makes it
-    schema = json.loads((unbake_resources / "schemas" / "host.schema.json").read_text())
-    template = (unbake_resources / "templates" / "host.toml").read_text()
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.schema = json.loads((UNBAKE_RESOURCES / "schemas" / "host.schema.json").read_text())
+        cls.template = (UNBAKE_RESOURCES / "templates" / "host.toml").read_text()
 
     def render(self, abumas="/state/tools/abumas", missing=frozenset()) -> dict:
         import tomllib

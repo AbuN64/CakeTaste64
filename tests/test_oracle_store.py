@@ -1,0 +1,98 @@
+"""The golden store: one oracle record per (ROM sha1, oracle key, movie sha256); a repeat never runs the oracle."""
+
+import json
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+
+from cake_taste import TasteError
+from cake_taste.oracle import store
+
+SLICE = (
+    Path(__file__).resolve().parent / "fixtures" / "oracle_record_slice.jsonl"
+)  # the head of a real boot-idle record
+PARAMS = {"pak": "on", "pads": 1, "exit_after": 300, "calls": 8}
+
+
+class Store(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+        live = self.root / ".state" / "oracle" / "live"
+        live.mkdir(parents=True)
+        (live / "n64host").write_text("host")
+        rom = self.root / "rom.z64"
+        rom.write_bytes(b"cartridge")
+        self.layout = store.Layout(live / "n64host", "keyA", rom, self.root / ".state" / "oracle-records")
+        self.movie = self.root / "movie.raw"
+        self.movie.write_text("0000 0 0\n" * 3)
+        self.runs: list[dict] = []
+
+    def runner(self, code=0, body=None):
+        def run(argv, env, cwd):
+            self.runs.append(dict(env))
+            if body is not False:
+                (cwd / store.RECORD).write_bytes(SLICE.read_bytes() if body is None else body)
+            return code
+
+        return run
+
+    def test_repeat_is_served_without_running_the_oracle(self):
+        first = store.record(self.layout, self.movie, PARAMS, self.root / "a", self.runner())
+        again = store.record(self.layout, self.movie, PARAMS, self.root / "b", self.runner(code=9))
+        self.assertFalse(first["served"])
+        self.assertTrue(again["served"])
+        self.assertEqual(len(self.runs), 1)
+        self.assertEqual((self.root / "b" / store.RECORD).read_bytes(), SLICE.read_bytes())
+        self.assertEqual(first["path"], again["path"])
+        self.assertEqual(again["bytes"], SLICE.stat().st_size)
+        self.assertIn(first["rom_sha1"] + "/keyA/" + first["movie_sha256"], first["path"])
+
+    def test_oracle_build_or_movie_change_records_again(self):
+        store.record(self.layout, self.movie, PARAMS, None, self.runner())
+        store.record(
+            store.Layout(self.layout.host, "keyB", self.layout.rom, self.layout.store),
+            self.movie,
+            PARAMS,
+            None,
+            self.runner(),
+        )
+        self.movie.write_text("0000 0 0\n" * 4)
+        store.record(self.layout, self.movie, PARAMS, None, self.runner())
+        self.assertEqual(len(self.runs), 3)
+
+    def test_other_params_at_a_stored_address_are_refused(self):
+        store.record(self.layout, self.movie, PARAMS, None, self.runner())
+        with self.assertRaises(TasteError) as raised:
+            store.record(self.layout, self.movie, {**PARAMS, "exit_after": 5}, None, self.runner())
+        self.assertEqual(raised.exception.key, "oracle.params")
+
+    def test_failed_or_empty_oracle_stores_nothing(self):
+        for runner, key in (
+            (self.runner(code=3), "oracle.failed"),
+            (self.runner(body=b""), "oracle.empty"),
+            (self.runner(body=False), "oracle.empty"),
+        ):
+            with self.assertRaises(TasteError) as raised:
+                store.record(self.layout, self.movie, PARAMS, None, runner)
+            self.assertEqual(raised.exception.key, key)
+        self.assertEqual([p.name for p in self.layout.store.iterdir()], [])
+
+    def test_host_env_is_the_selfcheck_environment(self):
+        store.record(self.layout, self.movie, PARAMS, None, self.runner())
+        env = self.runs[0]
+        self.assertEqual(env["N64R_TAS_PLAY"], str(self.movie))
+        self.assertEqual((env["N64R_TAS_EXIT_AFTER"], env["N64R_PADS"], env["N64R_LOCKSTEP_CALLS"]), ("300", "1", "8"))
+        self.assertEqual(env["N64R_CONFIG"], str(self.root / ".state" / "cfg"))
+
+    def test_real_record_slice_shape(self):
+        lines = [json.loads(line) for line in SLICE.read_text().splitlines()]
+        self.assertEqual((lines[0]["k"], lines[0]["side"]), ("meta", "oracle"))
+        polls = [x["poll"] for x in lines if x["k"] == "poll"]
+        self.assertEqual(polls, sorted(polls))
+        self.assertTrue(polls)
+
+
+if __name__ == "__main__":
+    unittest.main()
