@@ -46,7 +46,7 @@ extern "C" { volatile unsigned long long n64host_tas_poll = 0; }
 extern "C" int n64host_lockstep_on;
 extern "C" void n64host_lockstep_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t,
                                        uint64_t, uint64_t, uint32_t);
-extern "C" void n64host_lockstep_poll(uint64_t, uint64_t, const uint8_t *, const uint32_t *, unsigned);
+extern "C" void n64host_lockstep_poll(uint64_t, uint64_t, uint64_t, const uint8_t *, const uint32_t *, unsigned);
 static uint8_t rdram[0x4000];
 int main() {
     if (!n64host_lockstep_on) return 3;
@@ -54,13 +54,13 @@ int main() {
     uint32_t w = 0x11223344;
     std::memcpy(rdram + 0x2000, &w, 4);
     n64host_tas_poll = 1;                          // golden.cpp sets it before the poll line, as here
-    n64host_lockstep_poll(1, 2, rdram, pads[0], 2);
+    n64host_lockstep_poll(1, 2, 16683333, rdram, pads[0], 2);
     rdram[0x1000 ^ 3] = 0xAB;                      // changes page 1 before the hit
     n64host_lockstep_entry("f", rdram, 0, 0, 0, 0, 0, 0, 0x80003f00);
     n64host_tas_poll = 2;
-    n64host_lockstep_poll(2, 4, rdram, pads[1], 2);
+    n64host_lockstep_poll(2, 4, 33366666, rdram, pads[1], 2);
     n64host_tas_poll = 3;
-    n64host_lockstep_poll(3, 6, rdram, pads[2], 2);  // nothing changed
+    n64host_lockstep_poll(3, 6, 50049999, rdram, pads[2], 2);  // nothing changed
     return 0;
 }
 """
@@ -92,8 +92,8 @@ class LockstepDocsTest(unittest.TestCase):
         self.assertIn("lockstep.cpp", (HOST / "CMakeLists.txt").read_text(encoding="utf-8"))
         golden = (HOST / "golden.cpp").read_text(encoding="utf-8")
         self.assertIn("if (n64host_lockstep_on) {", golden)
-        self.assertIn("n64host_lockstep_poll(polls, vi_count.load(), n64host_rdram, words, n64host_golden_pads());",
-                      golden)
+        self.assertIn("n64host_lockstep_poll(polls, vi_count.load(), n64host_vclock_ns(), n64host_rdram, words, "
+                      "n64host_golden_pads());", golden)
 
 
 @unittest.skipUnless(shutil.which("g++"), "needs g++")
@@ -172,7 +172,8 @@ class LockstepPollTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             lines = [json.loads(x) for x in (out / "lockstep.jsonl").read_text().splitlines()]
             polls = [x for x in lines if x["k"] == "poll"]
-            self.assertEqual([(x["poll"], x["vi"]) for x in polls], [(1, 2), (2, 4), (3, 6)])
+            self.assertEqual([(x["poll"], x["vi"], x["ns"]) for x in polls],
+                             [(1, 2, 16683333), (2, 4, 33366666), (3, 6, 50049999)])
             self.assertEqual([x["pad"] for x in polls], [["00000000", "80000000"], ["900050b0", "00000000"],
                                                          ["0010ff01", "00200000"]])
             self.assertEqual([p[0] for p in polls[0]["pages"]], [0, 1, 2, 3])

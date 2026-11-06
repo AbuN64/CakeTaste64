@@ -36,8 +36,8 @@
 
 extern uint8_t *n64host_rdram;
 extern "C" int n64host_lockstep_on;
-extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, const uint8_t *rdram, const uint32_t *pads,
-                                      unsigned count);
+extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, uint64_t ns, const uint8_t *rdram,
+                                      const uint32_t *pads, unsigned count);
 void n64host_script_key(const char *name);
 extern "C" void n64host_view_shot(uint64_t poll);
 extern "C" void n64host_view_final();
@@ -296,7 +296,7 @@ extern "C" bool n64host_golden_pad(unsigned channel, uint16_t *buttons, int8_t *
         uint32_t words[4];
         for (unsigned i = 0; i < n64host_golden_pads(); i++)
             words[i] = uint32_t(held[i]) << 16 | uint32_t(uint8_t(held_x[i])) << 8 | uint8_t(held_y[i]);
-        n64host_lockstep_poll(polls, vi_count.load(), n64host_rdram, words, n64host_golden_pads());
+        n64host_lockstep_poll(polls, vi_count.load(), n64host_vclock_ns(), n64host_rdram, words, n64host_golden_pads());
     }
     const bool shot = shot_every && polls % shot_every == 0;
     if (shot && on()) checkpoint("poll-" + std::to_string(polls));

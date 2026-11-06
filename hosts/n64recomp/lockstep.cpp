@@ -5,7 +5,8 @@
 //           ("poll": a call's frame is the poll index, the unit the port's calls.jsonl stamps)
 //     hit   the first entry of a function: n (point number), fn, thr, vi, sp, pages = [[page, hash], ...] for
 //           every 4 KiB page whose hash changed since the previous point (all pages at the first point)
-//     poll  every controller poll of a TAS movie: poll (the index, from 1), vi, pad = the word each controller
+//     poll  every controller poll of a TAS movie: poll (the index, from 1), vi, ns (the virtual guest clock at the poll,
+//           the port's n64c_clock_peek_ns), pad = the word each controller
 //           answers (buttons << 16 | x << 8 | y), pages = the pages changed since the previous poll (all at the first)
 //     call  one of the first N64R_LOCKSTEP_CALLS (8) calls that each caller makes of a function, then every call at a power-of-two
 //           ordinal (a ring the port keeps at the same ordinals): i (the function's
@@ -299,16 +300,17 @@ extern "C" void n64host_lockstep_return(const char *name, const uint8_t *rdram, 
 }
 
 // One controller poll of a TAS movie (the host's n64host_golden_pad, channel 0's read): a `poll` point keyed by the
-// poll index, with the VI count, the pad word each controller answers this poll (buttons << 16 | stick x << 8 |
+// poll index, with the VI count, the virtual guest clock in ns, the pad word each controller answers this poll (buttons << 16 | stick x << 8 |
 // stick y, as the guest's OSContPad reads it) and the pages changed since the previous poll.
-extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, const uint8_t *rdram, const uint32_t *pads,
-                                      unsigned count) {
+extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, uint64_t ns, const uint8_t *rdram,
+                                      const uint32_t *pads, unsigned count) {
     std::lock_guard<std::mutex> g(lock);
     if (dump_poll >= 0) {  // the dump replay: only the dump poll does anything, and it ends the process
         if ((int64_t)poll == dump_poll) dump(rdram);
         return;
     }
-    std::string line = "{\"k\":\"poll\",\"poll\":" + std::to_string(poll) + ",\"vi\":" + std::to_string(vi) + ",\"pad\":[";
+    std::string line = "{\"k\":\"poll\",\"poll\":" + std::to_string(poll) + ",\"vi\":" + std::to_string(vi) + ",\"ns\":" +
+                       std::to_string(ns) + ",\"pad\":[";
     for (unsigned i = 0; i < count; i++) line += (i ? "," : "") + hex32(pads[i]);
     out_line(line + "],\"pages\":" + changed(poll_pages, rdram) + "}\n");
 }
