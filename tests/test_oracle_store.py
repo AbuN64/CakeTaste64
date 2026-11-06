@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from cake_taste import TasteError
 from cake_taste.oracle import store
@@ -28,6 +29,10 @@ class Store(unittest.TestCase):
         self.movie = self.root / "movie.raw"
         self.movie.write_text("0000 0 0\n" * 3)
         self.runs: list[dict] = []
+        self.driver = self.root / "vulkan/icd.d/lvp.arch.json"
+        discovery = patch.object(store.icd, "discover", return_value=self.driver)
+        self.discovery = discovery.start()
+        self.addCleanup(discovery.stop)
 
     def runner(self, code=0, body=None):
         def run(argv, env, cwd):
@@ -85,6 +90,15 @@ class Store(unittest.TestCase):
         self.assertEqual(env["N64R_TAS_PLAY"], str(self.movie))
         self.assertEqual((env["N64R_TAS_EXIT_AFTER"], env["N64R_PADS"], env["N64R_LOCKSTEP_CALLS"]), ("300", "1", "8"))
         self.assertEqual(env["N64R_CONFIG"], str(self.root / ".state" / "cfg"))
+        self.assertEqual(env["VK_DRIVER_FILES"], str(self.driver))
+
+    def test_missing_icd_refuses_before_running_the_host(self):
+        self.discovery.side_effect = FileNotFoundError("install the lavapipe Vulkan driver")
+        with self.assertRaises(TasteError) as raised:
+            store.record(self.layout, self.movie, PARAMS, None, self.runner())
+        self.assertEqual(raised.exception.key, "oracle.icd")
+        self.assertIn("install the lavapipe", raised.exception.detail)
+        self.assertEqual(self.runs, [])
 
     def test_real_record_slice_shape(self):
         lines = [json.loads(line) for line in SLICE.read_text().splitlines()]

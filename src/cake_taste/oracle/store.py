@@ -23,6 +23,7 @@ from abucache import stages as cache_stages
 
 from cake_taste import TasteError
 from cake_taste.files import atomic_json, sha256_file
+from cake_taste.oracle import icd
 
 RECORD = "lockstep.jsonl"
 FACTS = "record.json"
@@ -80,10 +81,14 @@ def folder(layout: Layout, rom_sha1: str, movie_sha256: str) -> Path:
 
 def host_env(layout: Layout, state: Path, movie: Path, out: Path, params: Mapping[str, Any]) -> dict[str, str]:
     """The oracle host's environment for one movie, the same one ci/oracle selfcheck plays under."""
+    try:
+        driver = icd.discover()
+    except OSError as error:
+        raise TasteError("oracle.icd", str(error)) from error
     return {
         "SDL_VIDEODRIVER": "offscreen",
         "SDL_AUDIODRIVER": "dummy",
-        "VK_DRIVER_FILES": "/usr/share/vulkan/icd.d/lvp_icd.json",
+        "VK_DRIVER_FILES": str(driver),
         "N64R_ROM": str(layout.rom),
         "N64R_CONFIG": str(state / "cfg"),
         "N64R_AUDIO_OUT": "/dev/null",

@@ -69,6 +69,8 @@ class Resume(unittest.TestCase):
         self.repo = self.tmp / "repo"
         n = self.repo / "hosts/n64recomp"
         script(self.repo / "ci/oracle", ORACLE.read_text())
+        discovery = Path("src/cake_taste/oracle/icd.py")
+        script(self.repo / discovery, (ORACLE.parents[1] / discovery).read_text())
         script(n / "deps.sh", DEPS)
         script(n / "recompile.sh", RECOMPILE)
         for name in ("checkout.sh", "decomp_elf.sh", "recomp_profile.py", "ragewars.profile.json"):

@@ -46,13 +46,7 @@ selfcheck() {  # HOST: boot-idle twice; the two state hashes must be equal
   for need in "$host" "$addrs" "$rom"; do
     test -e "$need" || { echo "selfcheck: $need is missing" >&2; exit 1; }
   done
-  icd=
-  for dir in $(printf %s "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" | tr : ' ') /etc; do
-    for f in "$dir"/vulkan/icd.d/*.json; do
-      test -e "$f" && grep -q '"library_path"[^,]*lvp' "$f" && { icd=$f; break 2; }
-    done
-  done
-  test -n "$icd" || { echo "selfcheck: no Vulkan ICD manifest naming lvp (lavapipe, the software driver the offscreen deterministic check needs) in the loader's vulkan/icd.d folders; install the lavapipe Vulkan driver" >&2; exit 1; }
+  icd=$(python3 "$root/src/cake_taste/oracle/icd.py")
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   spec=$work/oracle.spec

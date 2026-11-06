@@ -6,6 +6,9 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from cake_taste.oracle import store
 
 ROOT = Path(__file__).resolve().parents[1]
 ORACLE = ROOT / "ci/oracle"
@@ -72,6 +75,9 @@ class Refusals(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp, True)
         (tmp / "repo/ci").mkdir(parents=True)
         shutil.copy(ORACLE, tmp / "repo/ci/oracle")
+        discovery = Path("src/cake_taste/oracle/icd.py")
+        (tmp / "repo" / discovery).parent.mkdir(parents=True)
+        shutil.copy(ROOT / discovery, tmp / "repo" / discovery)
         git(tmp / "repo", "init", "-q")
         return tmp / "repo"
 
@@ -105,6 +111,27 @@ class Refusals(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("wrote no state hash", done.stderr)
         self.assertEqual(list(Path(env["TMPDIR"]).iterdir()), [])
+
+    def test_store_and_selfcheck_use_the_same_discovered_icd(self):
+        repo = self.tree()
+        host, env = self.selfcheck_inputs(repo)
+        driver = repo.parent / "data with spaces/vulkan/icd.d/lvp.arch.json"
+        driver.parent.mkdir(parents=True)
+        (repo.parent / "data/vulkan/icd.d/lvp_icd.json").rename(driver)
+        env["XDG_DATA_DIRS"] += ":" + str(driver.parents[2])
+        host.write_text(
+            '#!/bin/sh\n'
+            'printf "%s\\n" "$VK_DRIVER_FILES" >> "$(dirname "$0")/drivers.txt"\n'
+            'printf "state\\n" > "$N64R_TAS_STATE_HASH"\n'
+        )
+        done = self.run_oracle(repo, "selfcheck", str(host), **env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        layout = store.Layout(host, "key", repo / "rom.z64", repo / "records")
+        params = {"pak": "on", "pads": 1, "exit_after": 300, "calls": 8}
+        with patch.dict(os.environ, env, clear=True):
+            host_env = store.host_env(layout, repo / "state", repo / "movie.raw", repo / "out", params)
+        self.assertEqual(host_env["VK_DRIVER_FILES"], str(driver))
+        self.assertEqual((host.parent / "drivers.txt").read_text().splitlines(), [host_env["VK_DRIVER_FILES"]] * 2)
 
     def test_the_selfcheck_refuses_naming_lavapipe_when_no_manifest_names_it(self):
         repo = self.tree()
