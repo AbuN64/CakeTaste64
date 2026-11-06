@@ -1,4 +1,0 @@
-deploy-input TOOLKIT
-rig run ci/deploy_rig.py suite
-rig activate ci/deploy_rig.py $TOOLKIT toolkit
-rig run ci/deploy_rig.py commands

@@ -1,11 +1,10 @@
-"""Every third-party module this repository imports is a declared dependency, so the deploy toolkit installs it.
+"""Every third-party module this repository imports is a declared dependency, so the CI environment installs it.
 
-A module imported by src, ci or the deploy runner that pyproject.toml's `dependencies` do not name fails here, before a
-deploy finds it missing on the rig (abucache, 11-03: `ModuleNotFoundError` at suite-import).
+A module imported by src or ci that pyproject.toml's `dependencies` do not name fails here, before the CI environment
+finds it missing (abucache, 11-03: `ModuleNotFoundError` at suite-import).
 """
 
 import ast
-import importlib.util
 import re
 import sys
 import tempfile
@@ -14,10 +13,6 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("deploy_rig", REPO / "ci/deploy_rig.py")
-assert spec is not None and spec.loader is not None
-deploy_rig = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(deploy_rig)
 
 # Modules the interpreter that runs the code provides, so no requirement can install them: `gdb` exists only inside
 # the gdb process that runs src/cake_taste/repro/gdb_capture*.py.
@@ -74,8 +69,7 @@ def undeclared(root: Path, extra_sources: dict[str, str] | None = None) -> dict[
 
 class DeclaredDependencyTests(unittest.TestCase):
     def test_every_module_the_repository_imports_is_a_declared_dependency(self):
-        # the deploy runner is a string inside ci/deploy_rig.py that the rig executes: scan it as a source of its own
-        missing = undeclared(REPO, {"ci/deploy_rig.py RUNNER": deploy_rig.RUNNER})
+        missing = undeclared(REPO)
         self.assertEqual(missing, {}, "imported but not in pyproject.toml dependencies: " + repr(missing))
 
     def test_abucache_is_declared_with_a_source_the_toolkit_resolves(self):
