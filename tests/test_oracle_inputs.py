@@ -69,11 +69,39 @@ class RageWarsProfile(unittest.TestCase):
         address map, and
         needs recomp.h before it (addrmap.h's unaligned accessors hang on __RECOMP_H__)."""
         found = settings.load(load_profile(self.layout()))
-        self.assertEqual(found.recomp_include.splitlines(), ['#include "recomp.h"', '#include "probe.h"'])
+        self.assertEqual(found.recomp_include.splitlines(),
+                         ['#include "recomp.h"', '#define N64HOST_RECORD_ONLY 1', '#include "probe.h"'])
         self.assertTrue((ROOT / "hosts/n64recomp/probe/probe.h").is_file())
         text = (ROOT / "hosts/n64recomp/probe/addrmap.h").read_text()
         for macro in ("MEM_W", "MEM_H", "MEM_B", "MEM_HU", "MEM_BU", "SD", "LD"):
             self.assertIn(f"#define {macro}(", text)
+
+    def test_the_oracle_records_every_entry_without_charging_it(self):
+        """Regression: the profile had no trace_mode, so N64Recomp emitted no TRACE_ENTRY and the lockstep recorder
+        never ran: a 13,610-poll pp-1p-match record held 0 hit and 0 call lines, and the port's calls class was never
+        compared. Trace mode with N64HOST_RECORD_ONLY gives the recorders every entry and return while no entry charges
+        guest time, services interrupts or writes N64R_TRACE, so the game runs as it did without trace mode."""
+        found = settings.load(load_profile(self.layout()))
+        self.assertTrue(found.trace_mode)
+        self.assertIn("#define N64HOST_RECORD_ONLY 1", found.recomp_include.splitlines())
+        probe = ROOT / "hosts/n64recomp/probe"
+        with tempfile.TemporaryDirectory() as tmp:
+            unit = Path(tmp) / "unit.c"
+            unit.write_text('#include <stdint.h>\n#include "trace.h"\nENTRY: TRACE_ENTRY()\nRETURN: TRACE_RETURN()\n'
+                            "LOOP: TRACE_LOOP()\n")
+            for record_only, wanted, absent in (
+                (True, ("n64host_lockstep_entry", "n64host_lockstep_return", "n64host_replay_entry"),
+                 ("n64host_trace", "n64host_cpu_tick", "n64host_charged")),
+                (False, ("n64host_trace", "n64host_cpu_tick", "n64host_lockstep_entry"), ()),
+            ):
+                flags = ["-DN64HOST_RECORD_ONLY=1"] if record_only else []
+                text = subprocess.run(["gcc", "-E", "-P", *flags, f"-I{probe}", str(unit)], capture_output=True,
+                                      text=True, check=True).stdout
+                body = text[text.index("ENTRY:"):]
+                for name in wanted:
+                    self.assertIn(name + "(", body, (record_only, name))
+                for name in absent:
+                    self.assertNotIn(name + "(", body, (record_only, name))
 
     def test_the_derived_profile_makes_the_relative_rom_absolute_beside_the_live_file(self):
         loaded = self.layout()

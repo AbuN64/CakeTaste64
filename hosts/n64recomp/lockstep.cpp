@@ -2,22 +2,29 @@
 // It writes the oracle half of a lockstep comparison against a native port (the port's own tool compares):
 //   lockstep.jsonl  one JSON object per line:
 //     meta  side, ram, page, bytes ("canonical-be"), hash, calls (the calls kept per caller and function), frame
-//           ("poll": a call's frame is the poll index, the unit the port's calls.jsonl stamps)
+//           ("poll": a call's frame is the poll index, the unit the port's calls.jsonl stamps); replaced = the vrams of the runtime
+//           replacements (main.cpp's table, generated as funcs/replaced_funcs.inl): no body of theirs runs, so no call
+//           of theirs is ever recorded here
 //     hit   the first entry of a function: n (point number), fn, thr, vi, sp, pages = [[page, hash], ...] for
 //           every 4 KiB page whose hash changed since the previous point (all pages at the first point)
 //     poll  every controller poll of a TAS movie: poll (the index, from 1), vi, ns (the virtual guest clock at the poll,
 //           the port's n64c_clock_peek_ns), pad = the word each controller
 //           answers (buttons << 16 | x << 8 | y), pages = the pages changed since the previous poll (all at the first)
-//     call  one of the first N64R_LOCKSTEP_CALLS (8) calls that each caller makes of a function, then every call at a power-of-two
+//     pair  a (thread, caller, function) pair at its first call: id, thr, caller, fn
+//     tot   at each poll, before its `poll` line: d = [[pair id, calls so far], ...] for every pair whose count moved
+//     call  one of the first N64R_LOCKSTEP_CALLS (8) calls that each caller makes of a function on one thread, then every call at a power-of-two
 //           ordinal (a ring the port keeps at the same ordinals): i (the function's
 //           running call number), fn, caller (the nearest hooked function on this guest thread's stack, "?" for
-//           none), o (the ordinal among that caller's calls of fn, every call counted), frame (the poll index this
+//           none), o (the ordinal among that caller's calls of fn on this thread, every call counted), frame (the poll index this
 //           call falls in: the polls read so far, the port's reach_poll; never the retrace count), thr,
 //           a = a0..a3, f12, f14 (raw 64-bit), sp. The port writes the same keys (shim/boot/trace.c), so the two
 //           sides align call by call whatever phase their polls are in.
 //     ret   that call's return: fn, i, r = v0, v1, f0 (raw 64-bit), m = the 16-word windows the argument registers
 //           a0..a3 point at in RDRAM, read at the return (an RDRAM address inside a window reads pppppppp)
-//     watch the word at N64R_LOCKSTEP_WATCH changed between two hooks: at (enter|ret), fn, old, new
+//     watch a word of N64R_LOCKSTEP_WATCH = ADDR[@FROM-TO],... (up to 128 words) changed between two hooks: w (the
+//           word), poll, at (enter|ret), fn, old, new; a word with @FROM-TO only reports its changes in polls FROM..TO
+// N64R_LOCKSTEP_CALLS_POLLS=FROM-TO also records every call that falls in those polls (all ordinals, beside the ring),
+// so a short stretch is recorded call by call (the port's N64C_CALLS_POLLS keeps the same).
 // The record is hashes only: no page bytes. Bytes come from a dump: N64R_LOCKSTEP_DUMP=POLL:PAGE,PAGE,... replays the
 // same movie, records nothing (lockstep.jsonl is left as it is), and at poll POLL writes
 //   dump/POLL/dump.bin  each named page: u32 page, u32 0, u64 hash (little-endian), then its 4096 bytes
@@ -35,6 +42,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+extern "C" uint32_t n64host_replaced_vram(size_t i);  // main.cpp: the runtime replacement table
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -47,25 +56,38 @@ namespace {
 constexpr uint32_t PAGE = 4096;
 struct Fn { unsigned calls = 0; bool hit = false; };
 struct Frame { const char *name; uint32_t sp; int64_t call; uint32_t a[4]; };
+// A pair: one guest thread's calls from one caller to one function. Ordinals are per thread, as the port's
+// shim/boot/trace.c keys them, so a function two threads call keeps one aligned sequence per thread whatever the
+// threads' interleaving on either side.
 struct CallerFn {
     const char *caller, *fn;
-    bool operator==(const CallerFn &o) const { return caller == o.caller && fn == o.fn; }
+    long thr;
+    bool operator==(const CallerFn &o) const { return caller == o.caller && fn == o.fn && thr == o.thr; }
 };
 struct CallerFnHash {
     size_t operator()(const CallerFn &k) const {
-        return std::hash<const void *>()(k.caller) * 0x9E3779B97F4A7C15ull ^ std::hash<const void *>()(k.fn);
+        return (std::hash<const void *>()(k.caller) * 0x9E3779B97F4A7C15ull ^ std::hash<const void *>()(k.fn)) * 31u +
+               std::hash<long>()(k.thr);
     }
 };
+// Every call counted, recorded or not: n is the pair's next ordinal, told its count at the last `tot` line, id the
+// number its `pair` line gave it.
+struct PairCount { unsigned n = 0, told = 0, id = 0; };
 std::mutex lock;
 int log_fd = -1;
 int64_t dump_poll = -1;  // N64R_LOCKSTEP_DUMP: the poll whose named pages are dumped; -1 records
-uint32_t ram_bytes = 0x800000, max_calls = 8, points = 0, watch_phys = 0, watch_value = 0;
+uint32_t ram_bytes = 0x800000, max_calls = 8, points = 0;
+// The watched words: physical address, value last seen, lines written, the polls whose changes are reported.
+struct Watch { uint32_t phys = 0, value = 0; unsigned lines = 0; unsigned long long from = 0, to = ~0ull; };
+std::vector<Watch> &watches = *new std::vector<Watch>;
 bool watching = false;
-unsigned watch_lines = 0;
+unsigned long long window_from = 1, window_to = 0;  // N64R_LOCKSTEP_CALLS_POLLS
 // Leaked on purpose: guest threads still call in while main returns and static destructors run.
 std::unordered_map<const char *, Fn> &fns = *new std::unordered_map<const char *, Fn>;
-// Calls each caller has made of each function, recorded or not: the call's ordinal.
-std::unordered_map<CallerFn, unsigned, CallerFnHash> &ordinals = *new std::unordered_map<CallerFn, unsigned, CallerFnHash>;
+// Calls each caller has made of each function on each thread, recorded or not: the call's ordinal, and the per-poll
+// totals. `pairs` lists them in id order, so the totals walk only the pairs seen.
+std::unordered_map<CallerFn, PairCount, CallerFnHash> &ordinals = *new std::unordered_map<CallerFn, PairCount, CallerFnHash>;
+std::vector<PairCount *> &pairs = *new std::vector<PairCount *>;
 std::vector<uint32_t> &dump_pages = *new std::vector<uint32_t>;
 std::string &dump_dir = *new std::string;
 thread_local std::vector<Frame> frames;
@@ -76,7 +98,10 @@ struct Pages { std::vector<uint64_t> last; std::vector<uint8_t> shadow; bool sta
 Pages &hit_pages = *new Pages;
 Pages &poll_pages = *new Pages;
 
-long tid() { return (long)syscall(SYS_gettid); }
+long tid() {  // once per thread: every call keys its pair by it
+    thread_local const long id = (long)syscall(SYS_gettid);
+    return id;
+}
 void out(int fd, const void *data, size_t size) {
     const char *p = static_cast<const char *>(data);
     while (size) {
@@ -93,7 +118,10 @@ uint32_t word(const uint8_t *rdram, uint32_t phys) { uint32_t w; std::memcpy(&w,
 
 // The calls of one (caller, function) pair a run keeps: the first max_calls, then every power of two (a ring both sides
 // keep at the same ordinals, so the later calls of a long movie align too; the port's shim/boot/trace.c does the same).
-bool keeps(unsigned ordinal) { return ordinal < max_calls || (ordinal & (ordinal - 1)) == 0; }
+bool keeps(unsigned ordinal) {
+    return ordinal < max_calls || (ordinal & (ordinal - 1)) == 0 ||
+           (n64host_tas_poll >= window_from && n64host_tas_poll <= window_to);
+}
 
 // Memory a call leaves its results in: at the return of a recorded call, every argument register holding an aligned
 // address inside RDRAM names a WINDOW-word window, read as the 32-bit values the original's code sees. A word of the
@@ -188,11 +216,24 @@ int open_files() {
     if (!dir || !*dir) return 0;
     if (const char *r = std::getenv("N64R_LOCKSTEP_RAM")) ram_bytes = (uint32_t)std::strtoul(r, nullptr, 0) & ~(PAGE - 1);
     if (const char *c = std::getenv("N64R_LOCKSTEP_CALLS")) max_calls = (uint32_t)std::strtoul(c, nullptr, 10);
-    if (const char *w = std::getenv("N64R_LOCKSTEP_WATCH")) {
+    for (const char *w = std::getenv("N64R_LOCKSTEP_WATCH"); w && *w && watches.size() < 128;) {
         char *end;
         unsigned long a = std::strtoul(w, &end, 16);
-        watching = !*end && !(a & 3) && (a & 0x1FFFFFFFu) + 4 <= ram_bytes;
-        watch_phys = (uint32_t)(a & 0x1FFFFFFFu);
+        Watch x;
+        if (*end == '@') {
+            x.from = std::strtoull(end + 1, &end, 10);
+            x.to = *end == '-' ? std::strtoull(end + 1, &end, 10) : x.from;
+        }
+        x.phys = (uint32_t)(a & 0x1FFFFFFFu);
+        if ((!*end || *end == ',') && !(a & 3) && x.phys + 4 <= ram_bytes) watches.push_back(x);
+        w = std::strchr(w, ',');
+        w = w ? w + 1 : nullptr;
+    }
+    watching = !watches.empty();
+    if (const char *c = std::getenv("N64R_LOCKSTEP_CALLS_POLLS"); c && *c) {
+        char *end;
+        window_from = std::strtoull(c, &end, 10);
+        window_to = *end == '-' ? std::strtoull(end + 1, nullptr, 10) : window_from;
     }
     mkdir(dir, 0777);
     std::string d(dir);
@@ -208,9 +249,17 @@ int open_files() {
     }
     char meta[256];
     std::snprintf(meta, sizeof meta, "{\"k\":\"meta\",\"side\":\"oracle\",\"ram\":%u,\"page\":%u,\"bytes\":\"canonical-be\","
-                  "\"hash\":\"fnv1a64-le64\",\"calls\":%u,\"frame\":\"poll\",\"ring\":\"pow2\",\"window\":%u,\"watch\":\"%08x\"}\n", ram_bytes, PAGE, max_calls, WINDOW,
-                  watching ? 0x80000000u + watch_phys : 0u);
-    out(log_fd, meta, std::strlen(meta));
+                  "\"hash\":\"fnv1a64-le64\",\"calls\":%u,\"frame\":\"poll\",\"ring\":\"pow2\",\"window\":%u,\"ordinal\":\"thread\",\"totals\":\"poll\",\"watch\":\"%08x\",", ram_bytes, PAGE, max_calls, WINDOW,
+                  watching ? 0x80000000u + watches[0].phys : 0u);
+    std::string line(meta);
+    line += "\"replaced\":[";  // the runtime replacements' vrams, from the table main.cpp registers (replaced_funcs.inl)
+    for (size_t i = 0; uint32_t vram = n64host_replaced_vram(i); i++) {
+        char v[16];
+        std::snprintf(v, sizeof v, "%s\"%08x\"", i ? "," : "", vram);
+        line += v;
+    }
+    line += "]}\n";
+    out(log_fd, line.data(), line.size());
     return 1;
 }
 
@@ -244,12 +293,17 @@ void point(const char *name, const uint8_t *rdram, uint32_t sp) {
 }
 
 void watch(const char *name, const uint8_t *rdram, const char *at) {
-    uint32_t now = word(rdram, watch_phys);
-    if (now == watch_value || watch_lines >= 20000) return;
-    out_line(std::string("{\"k\":\"watch\",\"at\":\"") + at + "\",\"fn\":\"" + name + "\",\"thr\":" +
-             std::to_string(tid()) + ",\"old\":" + hex32(watch_value) + ",\"new\":" + hex32(now) + "}\n");
-    watch_value = now;
-    watch_lines++;
+    for (Watch &x : watches) {
+        uint32_t now = word(rdram, x.phys);
+        if (now == x.value) continue;
+        if (n64host_tas_poll >= x.from && n64host_tas_poll <= x.to && x.lines < 4000) {
+            out_line(std::string("{\"k\":\"watch\",\"w\":") + hex32(0x80000000u + x.phys) + ",\"poll\":" +
+                     std::to_string(n64host_tas_poll) + ",\"at\":\"" + at + "\",\"fn\":\"" + name + "\",\"thr\":" +
+                     std::to_string(tid()) + ",\"old\":" + hex32(x.value) + ",\"new\":" + hex32(now) + "}\n");
+            x.lines++;
+        }
+        x.value = now;
+    }
 }
 }  // namespace
 
@@ -265,7 +319,15 @@ extern "C" void n64host_lockstep_entry(const char *name, const uint8_t *rdram, u
         std::lock_guard<std::mutex> g(lock);
         Fn &f = fns[name];
         const char *caller = frames.empty() ? nullptr : frames.back().name;
-        const unsigned ordinal = ordinals[{caller, name}]++;
+        const long thr = tid();
+        PairCount &pc = ordinals[{caller, name, thr}];
+        const unsigned ordinal = pc.n++;
+        if (ordinal == 0) {  // the pair's first call: its line names it once, the `tot` lines then use its id
+            pc.id = (unsigned)pairs.size();
+            pairs.push_back(&pc);
+            out_line("{\"k\":\"pair\",\"id\":" + std::to_string(pc.id) + ",\"thr\":" + std::to_string(thr) +
+                     ",\"caller\":\"" + (caller ? caller : "?") + "\",\"fn\":\"" + name + "\"}\n");
+        }
         if (keeps(ordinal)) call = (int64_t)f.calls;
         f.calls++;
         if (!f.hit) {
@@ -309,6 +371,15 @@ extern "C" void n64host_lockstep_poll(uint64_t poll, uint64_t vi, uint64_t ns, c
         if ((int64_t)poll == dump_poll) dump(rdram);
         return;
     }
+    // The per-poll totals first: every pair whose count moved since the previous `tot` line, as [id, calls so far],
+    // the calls made before this poll's event (the port's trace.c takes the same snapshot at its poll tick).
+    std::string tot;
+    for (PairCount *pc : pairs)
+        if (pc->n != pc->told) {
+            pc->told = pc->n;
+            tot += (tot.empty() ? "[" : ",[") + std::to_string(pc->id) + "," + std::to_string(pc->n) + "]";
+        }
+    if (!tot.empty()) out_line("{\"k\":\"tot\",\"poll\":" + std::to_string(poll) + ",\"d\":[" + tot + "]}\n");
     std::string line = "{\"k\":\"poll\",\"poll\":" + std::to_string(poll) + ",\"vi\":" + std::to_string(vi) + ",\"ns\":" +
                        std::to_string(ns) + ",\"pad\":[";
     for (unsigned i = 0; i < count; i++) line += (i ? "," : "") + hex32(pads[i]);

@@ -388,6 +388,8 @@ under `N64R_` names and runs with no display server (no X11, no Wayland composit
   `watch`). The record is hashes only: no page bytes are kept. Pages are hashed
   in canonical big-endian byte order (each RDRAM word byte-swapped back); the
   hash is FNV-1a over little-endian 64-bit words.
+  The meta's `replaced` lists the vrams of the runtime replacements, read from the table `main.cpp` registers
+  (`funcs/replaced_funcs.inl`): no generated body of theirs runs, so the record holds no call of theirs.
 - `N64R_LOCKSTEP_DUMP`: `POLL:PAGE,PAGE,...`, the dump replay of a recorded
   movie (with `N64R_LOCKSTEP_DIR` the record's folder): nothing is recorded and
   `lockstep.jsonl` is left as it is; at poll POLL the named pages go to
@@ -395,9 +397,12 @@ under `N64R_` names and runs with no display server (no X11, no Wayland composit
   canonical bytes; written beside it, then renamed) and the host exits 0, so the
   dump is complete when the process has exited.
 - `N64R_LOCKSTEP_RAM`: RDRAM bytes hashed (default 0x800000).
-- `N64R_LOCKSTEP_CALLS`: calls recorded per caller and function (default 8), then every call at a power-of-two ordinal; each with its caller, ordinal and `frame`, the poll index it falls in (`n64host_tas_poll`, the unit the port's calls.jsonl stamps; the meta says `"frame":"poll"`), never the retrace count; decomp hands it the one keep value both sides use (`tas.oracle.lockstep_calls`), and at its return the 16-word windows its a0..a3 RDRAM pointers name (`m`).
-- `N64R_LOCKSTEP_WATCH`: an RDRAM address; every change of that word seen at an
-  entry or return is a `watch` line naming the function.
+- `N64R_LOCKSTEP_CALLS`: calls recorded per thread, caller and function (default 8), then every call at a power-of-two ordinal (the ordinal counts that thread's calls of the pair: the meta says `"ordinal":"thread"`); each pair's first call writes a `pair` line (id, thr, caller, fn), and each poll writes, before its `poll` line, a `tot` line listing `[pair id, calls so far]` for every pair whose count moved (`"totals":"poll"`), so whole-movie counts are exact whatever was kept; each call with its caller, ordinal and `frame`, the poll index it falls in (`n64host_tas_poll`, the unit the port's calls.jsonl stamps; the meta says `"frame":"poll"`), never the retrace count; decomp hands it the one keep value both sides use (`tas.oracle.lockstep_calls`), and at its return the 16-word windows its a0..a3 RDRAM pointers name (`m`).
+- `N64R_LOCKSTEP_WATCH`: RDRAM addresses, `ADDR[@FROM-TO],...` (up to 128 words); every change of a word seen at an
+  entry or return is a `watch` line naming the word (`w`), the poll and the function; a word with `@FROM-TO` only
+  reports its changes in those polls.
+- `N64R_LOCKSTEP_CALLS_POLLS`: `FROM-TO`; every call that falls in those polls is recorded (all ordinals), beside the
+  first `N64R_LOCKSTEP_CALLS` and the power-of-two ring.
 Returns pair with entries by name and stack pointer; frames left above a return
 (tail calls) are dropped. The port's own tool does the comparison.
 

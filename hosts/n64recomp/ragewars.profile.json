@@ -5,7 +5,8 @@
  "runtime_root": "../../.state/taste-run",
  "output_root": "../../.state/taste-run",
  "recomp": {
-  "recomp_include": "#include \"recomp.h\"\n#include \"probe.h\"",
+  "recomp_include": "#include \"recomp.h\"\n#define N64HOST_RECORD_ONLY 1\n#include \"probe.h\"",
+  "trace_mode": true,
   "decomp_root": "../../../RageWarsDecomp",
   "layout_glob": "versions/{version}/splat.yaml",
   "symbols_file": "versions/{version}/symbol_addrs.txt",

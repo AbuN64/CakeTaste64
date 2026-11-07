@@ -23,6 +23,20 @@
 size_t n64host_rom_size;
 
 // ---- probes -------------------------------------------------------------
+// The runtime replacements (funcs/replaced_funcs.inl, generated from recomp.symbol_names): no generated body runs for
+// these, so the lockstep recorder can name none of their calls. Constant-initialized, so a static initializer of another
+// unit (the recorder's meta line) reads it complete.
+static const struct { uint32_t vram; recomp_func_t *func; } replaced[] = {
+#if __has_include("replaced_funcs.inl")
+#include "replaced_funcs.inl"
+#else
+    { 0u, nullptr }
+#endif
+};
+// The vram of the i-th replacement, 0 past the end (or none generated).
+extern "C" uint32_t n64host_replaced_vram(size_t i) {
+    return i < sizeof replaced / sizeof replaced[0] && replaced[i].func ? replaced[i].vram : 0u;
+}
 extern "C" void n64host_cpu_tick(int charged);
 extern uint8_t *n64host_rdram;
 extern "C" void n64host_golden_init();
@@ -119,13 +133,6 @@ void entry(uint8_t *rdram, recomp_context *ctx) {
         }
     // Functions the profile renames to runtime replacements stay out of N64Recomp's table; guest code that
     // calls one through a stored pointer needs its address registered.
-    static const struct { uint32_t vram; recomp_func_t *func; } replaced[] = {
-#if __has_include("replaced_funcs.inl")
-#include "replaced_funcs.inl"
-#else
-        { 0u, nullptr }
-#endif
-    };
     for (const auto &r : replaced)
         if (r.func) recomp::overlays::add_loaded_function((int32_t)r.vram, r.func);
     recomp_func_t *f = find_func(HOST_ENTRY_ADDR);

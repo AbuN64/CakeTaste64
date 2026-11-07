@@ -12,7 +12,10 @@ HOST = Path(__file__).resolve().parents[1] / "hosts" / "n64recomp"
 DRIVER = r"""
 #include <cstdint>
 #include <cstring>
-extern "C" uint64_t n64host_golden_frame() { return 42; }  // the retrace count: never a call's frame
+extern "C" uint64_t n64host_golden_frame() { return 42; }
+// main.cpp's table
+extern "C" uint32_t n64host_replaced_vram(size_t i) { return i < 2 ? 0x802bef68u + 0x104u * (uint32_t)i : 0u; }
+// the retrace count: never a call's frame
 extern "C" { volatile unsigned long long n64host_tas_poll = 5; }  // golden.cpp: the polls read so far
 extern "C" int n64host_lockstep_on;
 extern "C" void n64host_lockstep_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t,
@@ -42,6 +45,8 @@ POLL_DRIVER = r"""
 #include <cstdint>
 #include <cstring>
 extern "C" uint64_t n64host_golden_frame() { return 7; }
+// main.cpp's table
+extern "C" uint32_t n64host_replaced_vram(size_t i) { return i < 2 ? 0x802bef68u + 0x104u * (uint32_t)i : 0u; }
 extern "C" { volatile unsigned long long n64host_tas_poll = 0; }
 extern "C" int n64host_lockstep_on;
 extern "C" void n64host_lockstep_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t,
@@ -78,7 +83,7 @@ class LockstepDocsTest(unittest.TestCase):
         source = (HOST / "lockstep.cpp").read_text(encoding="utf-8")
         names = set(re.findall(r"getenv\(\"(N64R_[A-Z_]+)\"\)", source))
         self.assertEqual(names, {"N64R_LOCKSTEP_DIR", "N64R_LOCKSTEP_RAM", "N64R_LOCKSTEP_CALLS",
-                                 "N64R_LOCKSTEP_WATCH", "N64R_LOCKSTEP_DUMP"})
+                                 "N64R_LOCKSTEP_WATCH", "N64R_LOCKSTEP_DUMP", "N64R_LOCKSTEP_CALLS_POLLS"})
         docs = (HOST / "RUNTIME.md").read_text(encoding="utf-8")
         for name in names:
             self.assertIn(f"`{name}`", docs)
@@ -108,12 +113,14 @@ class LockstepRecorderTest(unittest.TestCase):
                            text=True)
             out = path / "ls"
             env = dict(os.environ, N64R_LOCKSTEP_DIR=str(out), N64R_LOCKSTEP_RAM="0x4000",
-                       N64R_LOCKSTEP_WATCH="0x80001000")
+                       N64R_LOCKSTEP_WATCH="0x80001000@5,0x80002000@6-9,0x80002004")
             result = subprocess.run([str(exe)], env=env, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             lines = [json.loads(x) for x in (out / "lockstep.jsonl").read_text().splitlines()]
             self.assertEqual(lines[0]["side"], "oracle")
             self.assertEqual(lines[0]["bytes"], "canonical-be")
+            # the runtime replacements main.cpp registers: none of their calls can be recorded, so the meta names them
+            self.assertEqual(lines[0]["replaced"], ["802bef68", "802bf06c"])
             hits = [x for x in lines if x["k"] == "hit"]
             self.assertEqual([x["fn"] for x in hits], ["f", "g", "h"])
             self.assertEqual(len(hits[0]["pages"]), 4)
@@ -146,7 +153,19 @@ class LockstepRecorderTest(unittest.TestCase):
             self.assertEqual(rets[1]["m"], {})
             self.assertEqual((lines[0]["ring"], lines[0]["window"]), ("pow2", 16))
             watch = [x for x in lines if x["k"] == "watch"]
-            self.assertEqual([(x["fn"], x["new"]) for x in watch], [("g", "ab000000")])
+            # every watched word, each named; 0x80002000 changes in poll 5, outside its window 6-9: no line
+            self.assertEqual([(x["w"], x["poll"], x["fn"], x["new"]) for x in watch],
+                             [("80002004", 5, "f", "80001000"), ("80001000", 5, "g", "ab000000")])
+            # a call window keeps every call in its polls, beside the first-N and power-of-two ring
+            for polls, kept in (("", [0, 1, 2, 4, 8]), ("5", list(range(9))), ("6-9", [0, 1, 2, 4, 8])):
+                one = path / f"w{polls}"
+                run = subprocess.run([str(exe)], env=dict(env, N64R_LOCKSTEP_DIR=str(one), N64R_LOCKSTEP_CALLS="1",
+                                                          N64R_LOCKSTEP_CALLS_POLLS=polls),
+                                     capture_output=True, text=True, timeout=30)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                got = [json.loads(x) for x in (one / "lockstep.jsonl").read_text().splitlines()]
+                self.assertEqual([x["o"] for x in got if x["k"] == "call" and x["caller"] == "f" and x["fn"] == "f"],
+                                 kept)
             plain = subprocess.run([str(exe)], env={k: v for k, v in env.items() if k != "N64R_LOCKSTEP_DIR"},
                                    capture_output=True, text=True, timeout=30)
             self.assertEqual(plain.returncode, 3)
@@ -220,3 +239,70 @@ class LockstepPollTest(unittest.TestCase):
                                  text=True, timeout=30)
             self.assertEqual(bad.returncode, 3)  # a page outside RDRAM: the recorder stays off
             self.assertIn("lockstep dump off", bad.stderr)
+
+
+# Per-thread pairs and the per-poll totals: main calls f three times and a second thread twice, before poll 1; one
+# more call on main before poll 2; nothing before poll 3.
+PAIR_DRIVER = r"""
+#include <cstdint>
+#include <thread>
+extern "C" uint64_t n64host_golden_frame() { return 7; }
+// main.cpp's table
+extern "C" uint32_t n64host_replaced_vram(size_t i) { return i < 2 ? 0x802bef68u + 0x104u * (uint32_t)i : 0u; }
+extern "C" { volatile unsigned long long n64host_tas_poll = 0; }
+extern "C" int n64host_lockstep_on;
+extern "C" void n64host_lockstep_entry(const char *, const uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t,
+                                       uint64_t, uint64_t, uint32_t);
+extern "C" void n64host_lockstep_return(const char *, const uint8_t *, uint32_t, uint32_t, uint64_t, uint32_t);
+extern "C" void n64host_lockstep_poll(uint64_t, uint64_t, uint64_t, const uint8_t *, const uint32_t *, unsigned);
+static uint8_t rdram[0x4000];
+static const char f[] = "f";
+static void call() {
+    n64host_lockstep_entry(f, rdram, 0, 0, 0, 0, 0, 0, 0x80003f00);
+    n64host_lockstep_return(f, rdram, 0, 0, 0, 0x80003f00);
+}
+int main() {
+    if (!n64host_lockstep_on) return 3;
+    const uint32_t pad[1] = {0};
+    call(); call();
+    std::thread([] { call(); call(); }).join();
+    call();
+    n64host_tas_poll = 1;
+    n64host_lockstep_poll(1, 2, 0, rdram, pad, 1);
+    call();
+    n64host_tas_poll = 2;
+    n64host_lockstep_poll(2, 4, 0, rdram, pad, 1);
+    n64host_tas_poll = 3;
+    n64host_lockstep_poll(3, 6, 0, rdram, pad, 1);
+    return 0;
+}
+"""
+
+
+@unittest.skipUnless(shutil.which("g++"), "needs g++")
+class LockstepPairTotalsTest(unittest.TestCase):
+    def test_ordinals_are_per_thread_and_each_poll_lists_moved_totals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            (path / "driver.cpp").write_text(PAIR_DRIVER)
+            exe = path / "driver"
+            subprocess.run(["g++", "-std=c++17", "-O1", "-Wall", "-Werror", str(HOST / "lockstep.cpp"),
+                            str(path / "driver.cpp"), "-o", str(exe), "-lpthread"], check=True, capture_output=True,
+                           text=True)
+            out = path / "ls"
+            env = dict(os.environ, N64R_LOCKSTEP_DIR=str(out), N64R_LOCKSTEP_RAM="0x4000")
+            result = subprocess.run([str(exe)], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            lines = [json.loads(x) for x in (out / "lockstep.jsonl").read_text().splitlines()]
+            self.assertEqual((lines[0]["ordinal"], lines[0]["totals"]), ("thread", "poll"))
+            pairs = [x for x in lines if x["k"] == "pair"]
+            self.assertEqual([(x["id"], x["caller"], x["fn"]) for x in pairs], [(0, "?", "f"), (1, "?", "f")])
+            self.assertNotEqual(pairs[0]["thr"], pairs[1]["thr"])
+            calls = [x for x in lines if x["k"] == "call"]
+            # the function's call index i runs over both threads; the ordinal o is the thread's own
+            self.assertEqual([(x["i"], x["o"], x["thr"] == pairs[0]["thr"]) for x in calls],
+                             [(0, 0, True), (1, 1, True), (2, 0, False), (3, 1, False), (4, 2, True), (5, 3, True)])
+            tots = [(x["poll"], x["d"]) for x in lines if x["k"] == "tot"]
+            self.assertEqual(tots, [(1, [[0, 3], [1, 2]]), (2, [[0, 4]])])  # poll 3: nothing moved, no line
+            order = [x["k"] for x in lines if x["k"] in ("tot", "poll")]
+            self.assertEqual(order, ["tot", "poll", "tot", "poll", "poll"])  # a poll's totals precede its line
