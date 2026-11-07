@@ -34,7 +34,7 @@ Profiles are explicit JSON. Relative paths resolve against the profile file. Run
 
 `target.asset_ledger` identifies confirmed asset facts; `target.asset_observations` identifies rough observations in JSONL. Verified catalog changes cross to the owning source repository as evidence or reviewed patches.
 
-The known component sections are `media`, `logs`, `repro`, `recomp`, `trace`, `handoff`, and `target`. Component owners validate their own section fields. Paths, binaries, service identities, ports, titles, timezone and game-specific fatal markers belong in those sections. Secrets, runtime state, media, ROMs and dependency binaries stay outside Git.
+The known component sections are `media`, `logs`, `repro`, `recomp`, `trace`, `handoff`, `lockstep` and `target`. Component owners validate their own section fields. Paths, binaries, service identities, ports, titles, timezone and game-specific fatal markers belong in those sections. Secrets, runtime state, media, ROMs and dependency binaries stay outside Git.
 
 ## Commands and public boundaries
 
@@ -113,3 +113,30 @@ gdb side is `repro/gdb_capture.py` (breakpoints on the callee entries and their 
 captured thread); results go to `calls.json` beside the image and are part of the capture key. A case's `stub_calls`
 (a list, or `{file, sha256}` of that file) becomes harness `scall NAME V0 V1 [ADDR:VALUE...]` lines: the Nth call to a stub
 of that name answers V0/V1 and applies the writes; calls past the recorded ones answer as before.
+
+## Lockstep roots
+
+`taste lockstep roots --match REPORT [--out FILE]` reduces a lockstep census (a match report: `divergences` maps each
+class to its rows, each with an integer `poll`) to the divergences that start something and the consequences each one
+carries, so roots are worked side by side instead of one whole replay per fix. Profile section `lockstep`: `map`, the
+project's class map:
+
+```json
+{"version": 1, "classes": [{"name": "clock", "locus": []},
+  {"name": "calls", "locus": ["thread", "caller", "fn"], "thread": "thread", "within": "caller", "unit": "fn"},
+  {"name": "memory", "locus": ["address"], "unresolved": {"class": "page"}}],
+ "gap": 60, "coincide": 1, "margin": 30, "covered": "polls.common"}
+```
+
+Classes are listed upstream first. A locus's first row is its onset (later rows of it are carried). Onsets join an
+episode by nesting (same thread, the onset's `within` is a diverged unit, or its unit encloses one), by thread (the
+same thread diverged within `gap` polls) or by coincidence (within `coincide` polls of an episode root of the same
+resolution). An episode's root is `root` when no other resolved episode is active at its poll, `provisional` when one
+is (named in `upstream`), `unresolved` when its rows match the class's `unresolved` fields (a page hash without bytes):
+`dump_polls` lists the polls whose bytes resolve those. Each root names `through` (its poll plus `margin`): a replay
+of the movie's first `through` polls shows it.
+
+`--against KEPT` (a census written with `--out`) judges a new report: each kept root is `gone`, `present`, `moved` or
+`beyond` (past the report's `covered` polls), and `new` lists roots the kept census never had. With `--root ID` (repeat)
+the command refuses `lockstep.present` unless every named root is gone, and `lockstep.new` when a new root starts at or
+before their `through`: the proof of one fix on its own movie prefix.

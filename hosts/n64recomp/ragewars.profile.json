@@ -31,5 +31,8 @@
    "boot_segment": "rsp_boot",
    "source": "versions/us-rev1/splat.yaml segment rsp_audio_code (rom 0xDFE30); the boot microcode (segment rsp_boot, osSpTaskLoad's ucode_boot) loads the audio microcode text to the IMEM offset its `addi rt,$zero,imm` / `jr rt` pair names, read from the ROM, so every jal/jump-table address is text offset + that offset"
   }
+ },
+ "lockstep": {
+  "map": "../../../RageWarsEnhanced/shim/boot/lockstep-roots.json"
  }
 }

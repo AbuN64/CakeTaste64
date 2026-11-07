@@ -14,7 +14,7 @@ from typing import Any
 
 from cake_taste import TasteError
 
-SECTIONS = frozenset({"media", "logs", "repro", "recomp", "trace", "handoff", "target"})
+SECTIONS = frozenset({"media", "logs", "repro", "recomp", "trace", "handoff", "target", "lockstep"})
 _REQUIRED = frozenset({"schema_version", "name", "project_root", "runtime_root", "output_root"})
 _ALLOWED = _REQUIRED | SECTIONS
 

@@ -1,0 +1,4246 @@
+{
+"divergences": {
+"calls": [
+{
+"caller": "Cartridge_ReadChunksAndWait",
+"field": "poll",
+"fn": "Cartridge_AcquireReadRequest",
+"i": 730,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 730,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Vhandler_RunPageLoadWorker",
+"field": "poll",
+"fn": "Cartridge_ReadChunksAndWait",
+"i": 616,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 616,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_PrependIntrusive",
+"i": 4052,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 4052,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_RemoveIntrusive",
+"i": 5417,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 5417,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Vhandler_RunPagerDispatcher",
+"field": "poll",
+"fn": "Vhandler_HandleResourcePageRequest",
+"i": 7,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 7,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Virtual_FinishPageJob",
+"field": "poll",
+"fn": "Vhandler_MapResourcePage",
+"i": 7,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 7,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Vhandler_HandleResourcePageRequest",
+"field": "poll",
+"fn": "Vhandler_UnmapResourcePage",
+"i": 7,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 7,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Vhandler_RunPagerDispatcher",
+"field": "poll",
+"fn": "Virtual_FinishPageJob",
+"i": 7,
+"o": 7,
+"oracle": 2275,
+"poll": 2275,
+"port": 2287,
+"port_i": 7,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Cartridge_ReadChunksAndWait",
+"field": "total",
+"fn": "Cartridge_AcquireReadRequest",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Vhandler_RunPageLoadWorker",
+"field": "total",
+"fn": "Cartridge_ReadChunksAndWait",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Cartridge_RunReadWorkerRev1",
+"field": "total",
+"fn": "Cartridge_ReleaseReadRequest",
+"i": 0,
+"oracle": 731,
+"oracle_end": 74313,
+"poll": 2276,
+"port": 730,
+"port_end": 68033,
+"thread": "Cartridge_RunReadWorkerRev1"
+},
+{
+"caller": "Cartridge_ReleaseReadRequest",
+"field": "total",
+"fn": "List_PrependIntrusive",
+"i": 0,
+"oracle": 731,
+"oracle_end": 74313,
+"poll": 2276,
+"port": 730,
+"port_end": 68033,
+"thread": "Cartridge_RunReadWorkerRev1"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "total",
+"fn": "List_PrependIntrusive",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Cartridge_ReleaseReadRequest",
+"field": "total",
+"fn": "List_RemoveIntrusive",
+"i": 0,
+"oracle": 731,
+"oracle_end": 74313,
+"poll": 2276,
+"port": 730,
+"port_end": 68033,
+"thread": "Cartridge_RunReadWorkerRev1"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "total",
+"fn": "List_RemoveIntrusive",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPageLoadWorker"
+},
+{
+"caller": "Vhandler_RunPagerDispatcher",
+"field": "total",
+"fn": "Vhandler_HandleResourcePageRequest",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Virtual_FinishPageJob",
+"field": "total",
+"fn": "Vhandler_MapResourcePage",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Vhandler_HandleResourcePageRequest",
+"field": "total",
+"fn": "Vhandler_UnmapResourcePage",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Vhandler_RunPagerDispatcher",
+"field": "total",
+"fn": "Virtual_FinishPageJob",
+"i": 0,
+"oracle": 8,
+"oracle_end": 21,
+"poll": 2276,
+"port": 7,
+"port_end": 21,
+"thread": "Vhandler_RunPagerDispatcher"
+},
+{
+"caller": "Cartridge_SubmitReadChunks",
+"field": "poll",
+"fn": "Cartridge_AcquireReadRequest",
+"i": 731,
+"o": 0,
+"oracle": 2288,
+"poll": 2287,
+"port": 2287,
+"port_i": 731,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Sound_GetSampleDmaWindowAddress",
+"field": "poll",
+"fn": "Cartridge_SubmitReadChunks",
+"i": 0,
+"o": 0,
+"oracle": 2288,
+"poll": 2287,
+"port": 2287,
+"port_i": 0,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_PrependIntrusive",
+"i": 4054,
+"o": 0,
+"oracle": 2288,
+"poll": 2287,
+"port": 2287,
+"port_i": 4054,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_RemoveIntrusive",
+"i": 5419,
+"o": 0,
+"oracle": 2288,
+"poll": 2287,
+"port": 2287,
+"port_i": 5419,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_SubmitReadChunks",
+"field": "total",
+"fn": "Cartridge_AcquireReadRequest",
+"i": 0,
+"oracle": 0,
+"oracle_end": 64941,
+"poll": 2288,
+"port": 1,
+"port_end": 58375,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Sound_GetSampleDmaWindowAddress",
+"field": "total",
+"fn": "Cartridge_SubmitReadChunks",
+"i": 0,
+"oracle": 0,
+"oracle_end": 64941,
+"poll": 2288,
+"port": 1,
+"port_end": 58375,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "total",
+"fn": "List_PrependIntrusive",
+"i": 0,
+"oracle": 0,
+"oracle_end": 64941,
+"poll": 2288,
+"port": 1,
+"port_end": 58375,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "total",
+"fn": "List_RemoveIntrusive",
+"i": 0,
+"oracle": 0,
+"oracle_end": 64941,
+"poll": 2288,
+"port": 1,
+"port_end": 58375,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Audiomgr_RenderAudioFrame",
+"field": "total",
+"fn": "Sound_GetCachedAudioBlockAddress",
+"i": 0,
+"oracle": 0,
+"oracle_end": 1355685,
+"poll": 2288,
+"port": 2,
+"port_end": 1292428,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Audiomgr_RenderAudioFrame",
+"field": "total",
+"fn": "Sound_GetSampleDmaWindowAddress",
+"i": 0,
+"oracle": 0,
+"oracle_end": 1274253,
+"poll": 2288,
+"port": 2,
+"port_end": 1237750,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_SubmitReadChunks",
+"field": "poll",
+"fn": "Cartridge_AcquireReadRequest",
+"i": 732,
+"o": 1,
+"oracle": 2292,
+"poll": 2291,
+"port": 2291,
+"port_i": 732,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Sound_GetSampleDmaWindowAddress",
+"field": "poll",
+"fn": "Cartridge_SubmitReadChunks",
+"i": 1,
+"o": 1,
+"oracle": 2292,
+"poll": 2291,
+"port": 2291,
+"port_i": 1,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_PrependIntrusive",
+"i": 4056,
+"o": 1,
+"oracle": 2292,
+"poll": 2291,
+"port": 2291,
+"port_i": 4056,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_RemoveIntrusive",
+"i": 5421,
+"o": 1,
+"oracle": 2292,
+"poll": 2291,
+"port": 2291,
+"port_i": 5421,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_SubmitReadChunks",
+"field": "poll",
+"fn": "Cartridge_AcquireReadRequest",
+"i": 733,
+"o": 2,
+"oracle": 2295,
+"poll": 2294,
+"port": 2294,
+"port_i": 733,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Sound_GetSampleDmaWindowAddress",
+"field": "poll",
+"fn": "Cartridge_SubmitReadChunks",
+"i": 2,
+"o": 2,
+"oracle": 2295,
+"poll": 2294,
+"port": 2294,
+"port_i": 2,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_PrependIntrusive",
+"i": 4058,
+"o": 2,
+"oracle": 2295,
+"poll": 2294,
+"port": 2294,
+"port_i": 4058,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_RemoveIntrusive",
+"i": 5423,
+"o": 2,
+"oracle": 2295,
+"poll": 2294,
+"port": 2294,
+"port_i": 5423,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_SubmitReadChunks",
+"field": "poll",
+"fn": "Cartridge_AcquireReadRequest",
+"i": 734,
+"o": 3,
+"oracle": 2299,
+"poll": 2298,
+"port": 2298,
+"port_i": 734,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Sound_GetSampleDmaWindowAddress",
+"field": "poll",
+"fn": "Cartridge_SubmitReadChunks",
+"i": 3,
+"o": 3,
+"oracle": 2299,
+"poll": 2298,
+"port": 2298,
+"port_i": 3,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_PrependIntrusive",
+"i": 4060,
+"o": 3,
+"oracle": 2299,
+"poll": 2298,
+"port": 2298,
+"port_i": 4060,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Cartridge_AcquireReadRequest",
+"field": "poll",
+"fn": "List_RemoveIntrusive",
+"i": 5425,
+"o": 3,
+"oracle": 2299,
+"poll": 2298,
+"port": 2298,
+"port_i": 5425,
+"thread": "Audiomgr_RunAudioWorker"
+},
+{
+"caller": "Weaponai_UpdateCallbacksAndTimers",
+"field": "total",
+"fn": "Actor_RequestActorState",
+"i": 0,
+"oracle": 33,
+"oracle_end": 145,
+"poll": 13885,
+"port": 32,
+"port_end": 128,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Sound_StartSoundRecord",
+"field": "total",
+"fn": "AudioWorld_QueuePrioritizedSound",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Audio_InitializeVoiceParameters",
+"field": "total",
+"fn": "Audio_GetMetadataSectionFiveEntry",
+"i": 0,
+"oracle": 69,
+"oracle_end": 311,
+"poll": 13885,
+"port": 68,
+"port_end": 263,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "SoundElement_PlayFlatSound",
+"field": "total",
+"fn": "Audio_GetVoiceMixValue",
+"i": 0,
+"oracle": 62,
+"oracle_end": 229,
+"poll": 13885,
+"port": 61,
+"port_end": 153,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "Audio_InitializeVoiceParameters",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "SoundElement_PlayFlatSound",
+"field": "total",
+"fn": "Audio_SetVoiceMixValue",
+"i": 0,
+"oracle": 124,
+"oracle_end": 458,
+"poll": 13885,
+"port": 122,
+"port_end": 306,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "Audio_SetVoiceTrackId",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Barrel_FillDamagePacket",
+"i": 0,
+"oracle": 4,
+"oracle_end": 30,
+"poll": 13885,
+"port": 3,
+"port_end": 31,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Barrel_RunDamageHook",
+"i": 0,
+"oracle": 4,
+"oracle_end": 30,
+"poll": 13885,
+"port": 3,
+"port_end": 31,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "BuildRollMatrix",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Scene_StartWorldEffect",
+"field": "total",
+"fn": "Cache_RequestResource",
+"i": 0,
+"oracle": 28342,
+"oracle_end": 127666,
+"poll": 13885,
+"port": 28336,
+"port_end": 205351,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "Cache_UnlockResource",
+"i": 0,
+"oracle": 22,
+"oracle_end": 252,
+"poll": 13885,
+"port": 19,
+"port_end": 251,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_GetModelRenderMode",
+"field": "total",
+"fn": "Cache_UnlockResource",
+"i": 0,
+"oracle": 6,
+"oracle_end": 13,
+"poll": 13885,
+"port": 5,
+"port_end": 11,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_DrawSpriteResource",
+"field": "total",
+"fn": "Cache_UnlockResource",
+"i": 0,
+"oracle": 7727,
+"oracle_end": 34511,
+"poll": 13885,
+"port": 7723,
+"port_end": 55719,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_DrawTextGlyphs",
+"field": "total",
+"fn": "Cache_UnlockResource",
+"i": 0,
+"oracle": 4862,
+"oracle_end": 16395,
+"poll": 13885,
+"port": 4860,
+"port_end": 22544,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawSprite",
+"field": "total",
+"fn": "Cache_UnlockResource",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_ApplyPlayerDamage",
+"field": "total",
+"fn": "Cinema_IsSequenceActive",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Cinema_IsSequenceActive",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Cinema_IsSequenceInWindow",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Control_PollControllerPaks",
+"field": "total",
+"fn": "Control_IsAnyControllerPakEnabled",
+"i": 0,
+"oracle": 13829,
+"oracle_end": 59272,
+"poll": 13885,
+"port": 13830,
+"port_end": 59396,
+"thread": "Sched_RunEventLoop"
+},
+{
+"caller": "Control_ResetControllerPak",
+"field": "total",
+"fn": "Control_ReadControllerStates",
+"i": 0,
+"oracle": 23,
+"oracle_end": 49,
+"poll": 13885,
+"port": 22,
+"port_end": 47,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Control_SetProfileMode",
+"field": "total",
+"fn": "Control_ResetControllerPak",
+"i": 0,
+"oracle": 6,
+"oracle_end": 26,
+"poll": 13885,
+"port": 5,
+"port_end": 25,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Control_SetProfileMode",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "SetN64_UpdateGameMode",
+"field": "total",
+"fn": "Control_TickSnapshotCountdown",
+"i": 0,
+"oracle": 14862,
+"oracle_end": 60556,
+"poll": 13885,
+"port": 14861,
+"port_end": 60556,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Control_ReadControllerStates",
+"field": "total",
+"fn": "Control_UpdateControllerInput",
+"i": 0,
+"oracle": 55316,
+"oracle_end": 237088,
+"poll": 13885,
+"port": 55320,
+"port_end": 237584,
+"thread": "Sched_RunEventLoop"
+},
+{
+"caller": "Control_ReadControllerStates",
+"field": "total",
+"fn": "Control_UpdateControllerInput",
+"i": 0,
+"oracle": 60,
+"oracle_end": 152,
+"poll": 13885,
+"port": 56,
+"port_end": 144,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Scene_StartWorldEffect",
+"field": "total",
+"fn": "Defs_FindSortedValue",
+"i": 0,
+"oracle": 28342,
+"oracle_end": 127666,
+"poll": 13885,
+"port": 28336,
+"port_end": 205351,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyRadialDamage",
+"field": "total",
+"fn": "Events_ApplyDamageEvent",
+"i": 0,
+"oracle": 175,
+"oracle_end": 1535,
+"poll": 13885,
+"port": 161,
+"port_end": 1583,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Events_ApplyDamageReaction",
+"i": 0,
+"oracle": 4,
+"oracle_end": 30,
+"poll": 13885,
+"port": 3,
+"port_end": 31,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_DeliverContactEffect",
+"field": "total",
+"fn": "Events_ApplyRadialDamage",
+"i": 0,
+"oracle": 175,
+"oracle_end": 1535,
+"poll": 13885,
+"port": 161,
+"port_end": 1583,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Events_CanDamageActor",
+"i": 0,
+"oracle": 175,
+"oracle_end": 1633,
+"poll": 13885,
+"port": 161,
+"port_end": 1751,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Events_GetActorSizeScale",
+"i": 0,
+"oracle": 4,
+"oracle_end": 30,
+"poll": 13885,
+"port": 3,
+"port_end": 31,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "GameObject_ResetActorMotion",
+"i": 0,
+"oracle": 36,
+"oracle_end": 93,
+"poll": 13885,
+"port": 28,
+"port_end": 76,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawRenderList",
+"field": "total",
+"fn": "Geometry_SetColorDither",
+"i": 0,
+"oracle": 250,
+"oracle_end": 1012,
+"poll": 13885,
+"port": 248,
+"port_end": 860,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_SetupTextRendering",
+"field": "total",
+"fn": "Geometry_SetCombineMode",
+"i": 0,
+"oracle": 11404,
+"oracle_end": 45062,
+"poll": 13885,
+"port": 11403,
+"port_end": 51623,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawSprite",
+"field": "total",
+"fn": "Geometry_SetCombineMode",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_SetupTextRendering",
+"field": "total",
+"fn": "Geometry_SetModePreset",
+"i": 0,
+"oracle": 11404,
+"oracle_end": 45062,
+"poll": 13885,
+"port": 11403,
+"port_end": 51623,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawSprite",
+"field": "total",
+"fn": "Geometry_SetModePreset",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Gobjinst_BuildActorAimQuaternion",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Gobjinst_FindNearestBoneBounds",
+"i": 0,
+"oracle": 174,
+"oracle_end": 1631,
+"poll": 13885,
+"port": 160,
+"port_end": 1748,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Gobjinst_GetActorHeight",
+"i": 0,
+"oracle": 348,
+"oracle_end": 3164,
+"poll": 13885,
+"port": 320,
+"port_end": 3328,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Gobjinst_GetActorRadius",
+"i": 0,
+"oracle": 174,
+"oracle_end": 1631,
+"poll": 13885,
+"port": 160,
+"port_end": 1748,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Gobjinst_GetModelRenderMode",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Gobjinst_GetRootMeanSquareScale",
+"i": 0,
+"oracle": 174,
+"oracle_end": 1631,
+"poll": 13885,
+"port": 160,
+"port_end": 1748,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_GetActorSizeScale",
+"field": "total",
+"fn": "Gobjinst_GetRootMeanSquareScale",
+"i": 0,
+"oracle": 4,
+"oracle_end": 30,
+"poll": 13885,
+"port": 3,
+"port_end": 31,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "Gobjinst_RequestAnimatedModelVariant",
+"i": 0,
+"oracle": 22,
+"oracle_end": 252,
+"poll": 13885,
+"port": 19,
+"port_end": 251,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_GetModelRenderMode",
+"field": "total",
+"fn": "Gobjinst_RequestAnimatedModelVariant",
+"i": 0,
+"oracle": 6,
+"oracle_end": 13,
+"poll": 13885,
+"port": 5,
+"port_end": 11,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageReaction",
+"field": "total",
+"fn": "Graphu64_AddVec3",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "Graphu64_AddVec3",
+"i": 0,
+"oracle": 1281,
+"oracle_end": 11676,
+"poll": 13885,
+"port": 1176,
+"port_end": 11466,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "Graphu64_ClampMatrixToFixedRange",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "Graphu64_ConvertMatrixToFixed",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "Graphu64_ConvertMatrixToFloat",
+"i": 0,
+"oracle": 183,
+"oracle_end": 1668,
+"poll": 13885,
+"port": 168,
+"port_end": 1638,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Graphu64_GetPointDistance",
+"i": 0,
+"oracle": 174,
+"oracle_end": 1631,
+"poll": 13885,
+"port": 160,
+"port_end": 1748,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Graphu64_IdentityMatrix",
+"i": 0,
+"oracle": 15,
+"oracle_end": 50,
+"poll": 13885,
+"port": 10,
+"port_end": 40,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "total",
+"fn": "Graphu64_InterpolateVector",
+"i": 0,
+"oracle": 174,
+"oracle_end": 1533,
+"poll": 13885,
+"port": 160,
+"port_end": 1580,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "Graphu64_LimitVectorLength",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "Graphu64_MultiplyAffineMatrices",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Graphu64_NextRandom",
+"i": 0,
+"oracle": 6,
+"oracle_end": 13,
+"poll": 13885,
+"port": 5,
+"port_end": 11,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_ApplyPlayerDamage",
+"field": "total",
+"fn": "Graphu64_NextRandom",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Graphu64_NormalizeVec3",
+"i": 0,
+"oracle": 45,
+"oracle_end": 102,
+"poll": 13885,
+"port": 37,
+"port_end": 85,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "Graphu64_ScaleVector",
+"i": 0,
+"oracle": 183,
+"oracle_end": 1668,
+"poll": 13885,
+"port": 168,
+"port_end": 1638,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Graphu64_ScaleVector",
+"i": 0,
+"oracle": 72,
+"oracle_end": 186,
+"poll": 13885,
+"port": 56,
+"port_end": 152,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "Graphu64_SubtractVectors",
+"i": 0,
+"oracle": 183,
+"oracle_end": 1668,
+"poll": 13885,
+"port": 168,
+"port_end": 1638,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Graphu64_SubtractVectors",
+"i": 0,
+"oracle": 36,
+"oracle_end": 86,
+"poll": 13885,
+"port": 29,
+"port_end": 71,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "Graphu64_TransformPoint",
+"i": 0,
+"oracle": 183,
+"oracle_end": 1668,
+"poll": 13885,
+"port": 168,
+"port_end": 1638,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawRenderList",
+"field": "total",
+"fn": "Graphu64_TransformPoint",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawSprite",
+"field": "total",
+"fn": "Graphu64_TransformPoint",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Graphu64_TransformPoint",
+"i": 0,
+"oracle": 42,
+"oracle_end": 100,
+"poll": 13885,
+"port": 34,
+"port_end": 82,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Gregion_DarkenColor",
+"i": 0,
+"oracle": 72,
+"oracle_end": 186,
+"poll": 13885,
+"port": 56,
+"port_end": 152,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Gregion_DesaturateColor",
+"i": 0,
+"oracle": 72,
+"oracle_end": 186,
+"poll": 13885,
+"port": 56,
+"port_end": 152,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Gregion_ShiftColorHue",
+"i": 0,
+"oracle": 72,
+"oracle_end": 186,
+"poll": 13885,
+"port": 56,
+"port_end": 152,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gsky_PostScaledScreenMessage",
+"field": "total",
+"fn": "Gsky_ClearScreenMessage",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_PostKillMessages",
+"field": "total",
+"fn": "Gsky_PostScaledScreenMessage",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_CanDamageActor",
+"field": "total",
+"fn": "InstHdr_CanActorReceiveInteraction",
+"i": 0,
+"oracle": 13,
+"oracle_end": 123,
+"poll": 13885,
+"port": 12,
+"port_end": 131,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "GameObject_ResetActorMotion",
+"field": "total",
+"fn": "Insthdr_ResetInstanceRenderIndices",
+"i": 0,
+"oracle": 80,
+"oracle_end": 185,
+"poll": 13885,
+"port": 72,
+"port_end": 200,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Link_DispatchActorLinks",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gsky_PostScaledScreenMessage",
+"field": "total",
+"fn": "List_AppendIntrusive",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "List_AppendIntrusive",
+"i": 0,
+"oracle": 26,
+"oracle_end": 69,
+"poll": 13885,
+"port": 20,
+"port_end": 56,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Rumble_InitPoolNodes",
+"field": "total",
+"fn": "List_AppendIntrusive",
+"i": 0,
+"oracle": 92,
+"oracle_end": 170,
+"poll": 13885,
+"port": 89,
+"port_end": 164,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Rumble_InitPoolNodes",
+"field": "total",
+"fn": "List_InitializeIntrusive",
+"i": 0,
+"oracle": 58,
+"oracle_end": 110,
+"poll": 13885,
+"port": 56,
+"port_end": 106,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "List_InsertBeforeIntrusive",
+"i": 0,
+"oracle": 10,
+"oracle_end": 24,
+"poll": 13885,
+"port": 8,
+"port_end": 20,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "List_PrependIntrusive",
+"i": 0,
+"oracle": 36,
+"oracle_end": 93,
+"poll": 13885,
+"port": 28,
+"port_end": 76,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gsky_PostScaledScreenMessage",
+"field": "total",
+"fn": "List_RemoveIntrusive",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "List_RemoveIntrusive",
+"i": 0,
+"oracle": 36,
+"oracle_end": 93,
+"poll": 13885,
+"port": 28,
+"port_end": 76,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "MatrixFromQuaternion",
+"i": 0,
+"oracle": 12,
+"oracle_end": 19,
+"poll": 13885,
+"port": 11,
+"port_end": 17,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Audio_InitializeVoiceParameters",
+"field": "total",
+"fn": "Menu_ExpandFloatHighWord",
+"i": 0,
+"oracle": 276,
+"oracle_end": 1244,
+"poll": 13885,
+"port": 272,
+"port_end": 1052,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Menu_ExpandFloatHighWord",
+"i": 0,
+"oracle": 144,
+"oracle_end": 372,
+"poll": 13885,
+"port": 112,
+"port_end": 304,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Menu_MeasureLine",
+"field": "total",
+"fn": "Menu_GetGlyphAdvance",
+"i": 0,
+"oracle": 18976,
+"oracle_end": 51977,
+"poll": 13885,
+"port": 18961,
+"port_end": 44049,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Onscrn_DrawText",
+"field": "total",
+"fn": "Menu_MeasureLine",
+"i": 0,
+"oracle": 1236,
+"oracle_end": 2138,
+"poll": 13885,
+"port": 1235,
+"port_end": 1803,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Text_DrawTileGrid",
+"field": "total",
+"fn": "OnScreen_DrawScaledMaskedImage",
+"i": 0,
+"oracle": 52939,
+"oracle_end": 145373,
+"poll": 13885,
+"port": 52924,
+"port_end": 215881,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_DrawHeadsUpDisplay",
+"field": "total",
+"fn": "OnScreen_DrawSpriteResource",
+"i": 0,
+"oracle": 4416,
+"oracle_end": 22996,
+"poll": 13885,
+"port": 4412,
+"port_end": 37092,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Onscrn_DrawText",
+"field": "total",
+"fn": "OnScreen_DrawTextGlyphs",
+"i": 0,
+"oracle": 4862,
+"oracle_end": 16395,
+"poll": 13885,
+"port": 4860,
+"port_end": 22544,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_SetupTextRendering",
+"field": "total",
+"fn": "OnScreen_GetFontTexture",
+"i": 0,
+"oracle": 11404,
+"oracle_end": 45062,
+"poll": 13885,
+"port": 11403,
+"port_end": 51623,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_SetupTextRendering",
+"field": "total",
+"fn": "OnScreen_SetTextColors",
+"i": 0,
+"oracle": 11404,
+"oracle_end": 45062,
+"poll": 13885,
+"port": 11403,
+"port_end": 51623,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_SetupTextRendering",
+"field": "total",
+"fn": "OnScreen_SetTextScale",
+"i": 0,
+"oracle": 11404,
+"oracle_end": 45062,
+"poll": 13885,
+"port": 11403,
+"port_end": 51623,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Camera_DrawAndAdvanceMessages",
+"field": "total",
+"fn": "OnScreen_SetupTextRendering",
+"i": 0,
+"oracle": 184,
+"oracle_end": 1016,
+"poll": 13885,
+"port": 183,
+"port_end": 681,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Camera_DrawAndAdvanceMessages",
+"field": "total",
+"fn": "Onscrn_DrawText",
+"i": 0,
+"oracle": 184,
+"oracle_end": 1016,
+"poll": 13885,
+"port": 183,
+"port_end": 681,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "Particle_Attach",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Particle_Attach",
+"i": 0,
+"oracle": 36,
+"oracle_end": 93,
+"poll": 13885,
+"port": 28,
+"port_end": 76,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawRenderList",
+"field": "total",
+"fn": "Particle_BuildMatrix",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawRenderList",
+"field": "total",
+"fn": "Particle_DrawSprite",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "Particle_ParentTransform",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Particle_ReleaseOwnerListOneEffects",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Particle_ReleaseOwnerListTwoEffects",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Particle_RetireOwnedActors",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Particle_SpawnEffectGroup",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Player_ApplyPlayerDamage",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Player_GetPlayerIndex",
+"i": 0,
+"oracle": 6,
+"oracle_end": 20,
+"poll": 13885,
+"port": 4,
+"port_end": 16,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Player_PostKillMessages",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Player_ReleaseObjectHandles",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Player_SetPlayerState",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Barrel_RunDamageHook",
+"field": "total",
+"fn": "Playerai_ApplyDamagePacket",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Playerai_CreditDamageSource",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_ApplyPlayerDamage",
+"field": "total",
+"fn": "Playerai_HandlePlayerDeath",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_ApplyPlayerDamage",
+"field": "total",
+"fn": "Playerai_IsRoundEndState",
+"i": 0,
+"oracle": 3,
+"oracle_end": 16,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Playerai_ResetDamageTimers",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Playerai_SelectCharacterSound",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_SetPlayerState",
+"field": "total",
+"fn": "Playerai_StartSequenceTen",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_StartSequenceTen",
+"field": "total",
+"fn": "Playerai_TryStartPlayerSequence",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "Portal_FindSearchNode",
+"i": 0,
+"oracle": 6,
+"oracle_end": 20,
+"poll": 13885,
+"port": 4,
+"port_end": 16,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Control_ResetControllerPak",
+"field": "total",
+"fn": "Rumble_InitPoolNodes",
+"i": 0,
+"oracle": 23,
+"oracle_end": 49,
+"poll": 13885,
+"port": 22,
+"port_end": 47,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Rumble_SamplePackedFloatRange",
+"i": 0,
+"oracle": 936,
+"oracle_end": 2418,
+"poll": 13885,
+"port": 728,
+"port_end": 1976,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "ScaleMatrixLocal",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_TryStartPlayerSequence",
+"field": "total",
+"fn": "Scene_FindActorDefinition",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Link_DispatchActorLinks",
+"field": "total",
+"fn": "Scene_FindActorTriggerRange",
+"i": 0,
+"oracle": 24,
+"oracle_end": 88,
+"poll": 13885,
+"port": 23,
+"port_end": 49,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "Scene_FindModelIdIndex",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Textload_LocateTextureResource",
+"field": "total",
+"fn": "Scene_LocateTextureResource",
+"i": 0,
+"oracle": 36,
+"oracle_end": 93,
+"poll": 13885,
+"port": 28,
+"port_end": 76,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_DrawSpriteResource",
+"field": "total",
+"fn": "Scene_StartWorldEffect",
+"i": 0,
+"oracle": 7727,
+"oracle_end": 34511,
+"poll": 13885,
+"port": 7723,
+"port_end": 55719,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_DrawTextGlyphs",
+"field": "total",
+"fn": "Scene_StartWorldEffect",
+"i": 0,
+"oracle": 4862,
+"oracle_end": 16395,
+"poll": 13885,
+"port": 4860,
+"port_end": 22544,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_PostKillMessages",
+"field": "total",
+"fn": "SetN64_CopyString",
+"i": 0,
+"oracle": 12,
+"oracle_end": 40,
+"poll": 13885,
+"port": 8,
+"port_end": 32,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_FindNearestBoneBounds",
+"field": "total",
+"fn": "SetN64_GetPackSection",
+"i": 0,
+"oracle": 22,
+"oracle_end": 252,
+"poll": 13885,
+"port": 19,
+"port_end": 251,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Gobjinst_GetModelRenderMode",
+"field": "total",
+"fn": "SetN64_GetPackSection",
+"i": 0,
+"oracle": 6,
+"oracle_end": 13,
+"poll": 13885,
+"port": 5,
+"port_end": 11,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Scene_FindActorDefinition",
+"field": "total",
+"fn": "SetN64_GetPackSection",
+"i": 0,
+"oracle": 2747,
+"oracle_end": 9084,
+"poll": 13885,
+"port": 2578,
+"port_end": 9392,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Scene_LocateTextureResource",
+"field": "total",
+"fn": "SetN64_LocatePackSection",
+"i": 0,
+"oracle": 36,
+"oracle_end": 93,
+"poll": 13885,
+"port": 28,
+"port_end": 76,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Scene_StartWorldEffect",
+"field": "total",
+"fn": "SetN64_LocatePackSection",
+"i": 0,
+"oracle": 28342,
+"oracle_end": 127666,
+"poll": 13885,
+"port": 28336,
+"port_end": 205351,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "SetN64_UpdateGameMode",
+"field": "total",
+"fn": "SetN64_UpdateActiveSession",
+"i": 0,
+"oracle": 5964,
+"oracle_end": 23361,
+"poll": 13885,
+"port": 5963,
+"port_end": 37959,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "SetN64_RunGameLoop",
+"field": "total",
+"fn": "SetN64_UpdateGameMode",
+"i": 0,
+"oracle": 14862,
+"oracle_end": 60556,
+"poll": 13885,
+"port": 14861,
+"port_end": 60556,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "SoundElement_PlayFlatSound",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "SoundElement_PlaySoundAtPosition",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "SoundInfo_GetFlags",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "SoundInfo_GetGroup",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "SoundInfo_GetPan",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "SoundInfo_GetPitch",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "SoundInfo_GetPriority",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "SoundInfo_GetSample",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "Sound_AcquireContextLock",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "SoundElement_PlayFlatSound",
+"field": "total",
+"fn": "Sound_PlaySoundAtPosition",
+"i": 0,
+"oracle": 62,
+"oracle_end": 229,
+"poll": 13885,
+"port": 61,
+"port_end": 153,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "SoundElement_PlaySoundAtPosition",
+"field": "total",
+"fn": "Sound_PlaySoundAtPosition",
+"i": 0,
+"oracle": 53,
+"oracle_end": 276,
+"poll": 13885,
+"port": 52,
+"port_end": 456,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "AudioWorld_QueuePrioritizedSound",
+"field": "total",
+"fn": "Sound_ReleaseContextLock",
+"i": 0,
+"oracle": 6,
+"oracle_end": 14,
+"poll": 13885,
+"port": 5,
+"port_end": 12,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_DrawSpriteNumber",
+"field": "total",
+"fn": "Text_DrawTileGrid",
+"i": 0,
+"oracle": 15173,
+"oracle_end": 75966,
+"poll": 13885,
+"port": 15174,
+"port_end": 126640,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "OnScreen_DrawSpriteResource",
+"field": "total",
+"fn": "Text_DrawTileGrid",
+"i": 0,
+"oracle": 7727,
+"oracle_end": 34511,
+"poll": 13885,
+"port": 7723,
+"port_end": 55719,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawSprite",
+"field": "total",
+"fn": "Textload_LoadTextureFrameTiles",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_SpawnEffectGroup",
+"field": "total",
+"fn": "Textload_LocateTextureResource",
+"i": 0,
+"oracle": 36,
+"oracle_end": 93,
+"poll": 13885,
+"port": 28,
+"port_end": 76,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawSprite",
+"field": "total",
+"fn": "Textload_ReadTextureAnimationInfo",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawSprite",
+"field": "total",
+"fn": "Textload_RequestTextureVariation",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_BuildMatrix",
+"field": "total",
+"fn": "TranslateMatrix",
+"i": 0,
+"oracle": 226,
+"oracle_end": 1184,
+"poll": 13885,
+"port": 218,
+"port_end": 982,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Particle_DrawRenderList",
+"field": "total",
+"fn": "Visdata_TestBoxAgainstFrustum",
+"i": 0,
+"oracle": 695,
+"oracle_end": 2925,
+"poll": 13885,
+"port": 687,
+"port_end": 2413,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_ApplyDamagePacket",
+"field": "total",
+"fn": "XPlus_NextRandomInteger",
+"i": 0,
+"oracle": 3,
+"oracle_end": 10,
+"poll": 13885,
+"port": 2,
+"port_end": 8,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_HandlePlayerDeath",
+"field": "total",
+"fn": "XPlus_NextRandomInteger",
+"i": 0,
+"oracle": 12,
+"oracle_end": 42,
+"poll": 13885,
+"port": 8,
+"port_end": 34,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "poll",
+"fn": "Barrel_FillDamagePacket",
+"i": 4,
+"o": 4,
+"oracle": 15238,
+"poll": 13886,
+"port": 13886,
+"port_i": 4,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "poll",
+"fn": "Barrel_RunDamageHook",
+"i": 4,
+"o": 4,
+"oracle": 15238,
+"poll": 13886,
+"port": 13886,
+"port_i": 4,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "poll",
+"fn": "Events_ApplyDamageReaction",
+"i": 4,
+"o": 4,
+"oracle": 15238,
+"poll": 13886,
+"port": 13886,
+"port_i": 4,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_ApplyDamageEvent",
+"field": "poll",
+"fn": "Events_GetActorSizeScale",
+"i": 4,
+"o": 4,
+"oracle": 15238,
+"poll": 13886,
+"port": 13886,
+"port_i": 4,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Events_GetActorSizeScale",
+"field": "poll",
+"fn": "Gobjinst_GetRootMeanSquareScale",
+"i": 285,
+"o": 4,
+"oracle": 15238,
+"poll": 13886,
+"port": 13886,
+"port_i": 178,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_UpdateSequenceWait",
+"field": "poll",
+"fn": "Graphu64_EaseValueToward",
+"i": 33685,
+"o": 32,
+"oracle": 13886,
+"poll": 13886,
+"port": 13888,
+"port_i": 33701,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Player_UpdateBodyMovementAndActions",
+"field": "poll",
+"fn": "Playerai_UpdateSequence50Wait",
+"i": 32,
+"o": 32,
+"oracle": 13886,
+"poll": 13886,
+"port": 13888,
+"port_i": 32,
+"thread": "SetN64_RunGameThread"
+},
+{
+"caller": "Playerai_UpdateSequence50Wait",
+"field": "poll",
+"fn": "Playerai_UpdateSequenceWait",
+"i": 32,
+"o": 32,
+"oracle": 13886,
+"poll": 13886,
+"port": 13888,
+"port_i": 32,
+"thread": "SetN64_RunGameThread"
+}
+],
+"clock": [
+{
+"offset": -64000,
+"oracle": 248266730666,
+"poll": 13885,
+"port": 248266666666
+},
+{
+"offset": 0,
+"oracle": 248283333333,
+"poll": 13886,
+"port": 248283333333
+},
+{
+"offset": 64000,
+"oracle": 248300000000,
+"poll": 13887,
+"port": 248300064000
+},
+{
+"offset": 0,
+"oracle": 248316666666,
+"poll": 13888,
+"port": 248316666666
+},
+{
+"offset": -64000,
+"oracle": 251300064000,
+"poll": 14067,
+"port": 251300000000
+},
+{
+"offset": 0,
+"oracle": 251316666666,
+"poll": 14068,
+"port": 251316666666
+}
+],
+"input": [],
+"memory": [
+{
+"address": "800c7000",
+"class": "page",
+"oracle": "2d8268a8e48d08dc",
+"poll": 1,
+"port": "f09ee238e216c89a",
+"symbol": "literals_Target_UpdateTargetSelection"
+},
+{
+"address": "800c8000",
+"class": "page",
+"oracle": "b7776f4043eff23c",
+"poll": 1,
+"port": "e8f124a8b9d7329e",
+"symbol": "literals_Weaponai_UpdateSpinAndAlternateFire+0x20"
+},
+{
+"address": "800c9000",
+"class": "page",
+"oracle": "79651a5ad357b5a3",
+"poll": 1,
+"port": "ce7ef8430948dd8a",
+"symbol": "g_voicePitchLowerStep"
+},
+{
+"address": "800ca000",
+"class": "page",
+"oracle": "28f567887dcfdb27",
+"poll": 1,
+"port": "a50b6b49e715cf24",
+"symbol": "g_constructMapSimpModelsIndex+0xc"
+},
+{
+"address": "800cb000",
+"class": "page",
+"oracle": "1e84fa19179ba6d8",
+"poll": 1,
+"port": "b889adfb94ecc221",
+"symbol": "literals_Fx_UpdateFillMode+0xc"
+},
+{
+"address": "800cc000",
+"class": "page",
+"oracle": "9f4c785e474d660c",
+"poll": 1,
+"port": "839689d8c3de7468",
+"symbol": "D_800CBE6C_us_rev1+0x194"
+},
+{
+"address": "800cd000",
+"class": "page",
+"oracle": "df715b5d88e53adf",
+"poll": 1,
+"port": "cfadf5d58494114c",
+"symbol": "g_signedDivideLeadingZeroTable_StorageWords+0xb0"
+},
+{
+"address": "800ce000",
+"class": "page",
+"oracle": "e0aaf0cd2a0242d8",
+"poll": 1,
+"port": "59bcd04a6c9ab0a0",
+"symbol": "g_aiCharacterBehaviorTables"
+},
+{
+"address": "800cf000",
+"class": "page",
+"oracle": "7d140a4f4a73532e",
+"poll": 1,
+"port": "7d3a2f90a15e5d29",
+"symbol": "g_PlayerStateSpecialCallbacks30UsRev1"
+},
+{
+"address": "800d0000",
+"class": "page",
+"oracle": "14cfe6d876a88328",
+"poll": 1,
+"port": "1095c1482ce4de57",
+"symbol": "g_weaponSlot7PresentationTailUsRev1+0x8"
+},
+{
+"address": "800d1000",
+"class": "page",
+"oracle": "a78cbcb1d1963c16",
+"poll": 1,
+"port": "a20726b8a47b3434",
+"symbol": "g_textureFrameDefaultDisplayList+0x60"
+},
+{
+"address": "800d2000",
+"class": "page",
+"oracle": "7e8dd8d5746e92e8",
+"poll": 1,
+"port": "f95c8da89d2f42b1",
+"symbol": "D_800D1D60_us_rev1+0x2a0"
+},
+{
+"address": "800f2000",
+"class": "page",
+"oracle": "2af3960f66b74485",
+"poll": 22,
+"port": "d6b336ee13708d25",
+"symbol": "g_profileResetEventIdsEu+0x8c"
+},
+{
+"address": "8067c000",
+"class": "page",
+"oracle": "bb65472f4562aa6e",
+"poll": 22,
+"port": "1cbb838462a01039",
+"symbol": "Hud_StartPanelMovers+0x22d2dc"
+},
+{
+"address": "8068a000",
+"class": "page",
+"oracle": "9a3acec3482e0725",
+"poll": 22,
+"port": "5dd26bd80708b125",
+"symbol": "Hud_StartPanelMovers+0x23b2dc"
+},
+{
+"address": "8068b000",
+"class": "page",
+"oracle": "1898faa03fcc5cc5",
+"poll": 22,
+"port": "c6c1d05ab5597625",
+"symbol": "Hud_StartPanelMovers+0x23c2dc"
+},
+{
+"address": "8068e000",
+"class": "page",
+"oracle": "79bca72d9b45c2cd",
+"poll": 22,
+"port": "f520cf9c58bd87a5",
+"symbol": "Hud_StartPanelMovers+0x23f2dc"
+},
+{
+"address": "80554000",
+"class": "page",
+"oracle": "b53178be68190325",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1052dc"
+},
+{
+"address": "80555000",
+"class": "page",
+"oracle": "facad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1062dc"
+},
+{
+"address": "80556000",
+"class": "page",
+"oracle": "6ccad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1072dc"
+},
+{
+"address": "80557000",
+"class": "page",
+"oracle": "2bcad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1082dc"
+},
+{
+"address": "80558000",
+"class": "page",
+"oracle": "78cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1092dc"
+},
+{
+"address": "80559000",
+"class": "page",
+"oracle": "94cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x10a2dc"
+},
+{
+"address": "8055a000",
+"class": "page",
+"oracle": "1ccad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x10b2dc"
+},
+{
+"address": "8055b000",
+"class": "page",
+"oracle": "7ccad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x10c2dc"
+},
+{
+"address": "8055c000",
+"class": "page",
+"oracle": "fdcad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x10d2dc"
+},
+{
+"address": "8055d000",
+"class": "page",
+"oracle": "76cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x10e2dc"
+},
+{
+"address": "8055e000",
+"class": "page",
+"oracle": "6ecad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x10f2dc"
+},
+{
+"address": "8055f000",
+"class": "page",
+"oracle": "b0cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1102dc"
+},
+{
+"address": "80560000",
+"class": "page",
+"oracle": "87cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1112dc"
+},
+{
+"address": "80561000",
+"class": "page",
+"oracle": "9ccad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1122dc"
+},
+{
+"address": "80562000",
+"class": "page",
+"oracle": "0667dc23d46b3aea",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1132dc"
+},
+{
+"address": "80563000",
+"class": "page",
+"oracle": "656cfb78f310a929",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1142dc"
+},
+{
+"address": "80564000",
+"class": "page",
+"oracle": "702bee1d64912e69",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1152dc"
+},
+{
+"address": "80565000",
+"class": "page",
+"oracle": "2c880abef97773bc",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1162dc"
+},
+{
+"address": "80566000",
+"class": "page",
+"oracle": "40f52422cb972b56",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1172dc"
+},
+{
+"address": "80567000",
+"class": "page",
+"oracle": "68cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1182dc"
+},
+{
+"address": "80568000",
+"class": "page",
+"oracle": "66cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1192dc"
+},
+{
+"address": "80569000",
+"class": "page",
+"oracle": "ca5d52db92b5342f",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x11a2dc"
+},
+{
+"address": "8056a000",
+"class": "page",
+"oracle": "02302850fe361e3d",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x11b2dc"
+},
+{
+"address": "8056b000",
+"class": "page",
+"oracle": "3d4d587eef8048b0",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x11c2dc"
+},
+{
+"address": "8056c000",
+"class": "page",
+"oracle": "ae108a81893faa19",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x11d2dc"
+},
+{
+"address": "8056d000",
+"class": "page",
+"oracle": "22cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x11e2dc"
+},
+{
+"address": "8056e000",
+"class": "page",
+"oracle": "b7cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x11f2dc"
+},
+{
+"address": "8056f000",
+"class": "page",
+"oracle": "7ecad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1202dc"
+},
+{
+"address": "80570000",
+"class": "page",
+"oracle": "20cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1212dc"
+},
+{
+"address": "80571000",
+"class": "page",
+"oracle": "22cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1222dc"
+},
+{
+"address": "80572000",
+"class": "page",
+"oracle": "04cad9534e254b25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1232dc"
+},
+{
+"address": "80573000",
+"class": "page",
+"oracle": "8058725ba5316e25",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1242dc"
+},
+{
+"address": "80600000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b12dc"
+},
+{
+"address": "80601000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b22dc"
+},
+{
+"address": "80602000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b32dc"
+},
+{
+"address": "80603000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b42dc"
+},
+{
+"address": "80604000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b52dc"
+},
+{
+"address": "80605000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b62dc"
+},
+{
+"address": "80606000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b72dc"
+},
+{
+"address": "80607000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b82dc"
+},
+{
+"address": "80608000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1b92dc"
+},
+{
+"address": "80609000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1ba2dc"
+},
+{
+"address": "8060a000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1bb2dc"
+},
+{
+"address": "8060b000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1bc2dc"
+},
+{
+"address": "8060c000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1bd2dc"
+},
+{
+"address": "8060d000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1be2dc"
+},
+{
+"address": "8060e000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1bf2dc"
+},
+{
+"address": "8060f000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c02dc"
+},
+{
+"address": "80610000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c12dc"
+},
+{
+"address": "80611000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c22dc"
+},
+{
+"address": "80612000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c32dc"
+},
+{
+"address": "80613000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c42dc"
+},
+{
+"address": "80614000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c52dc"
+},
+{
+"address": "80615000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c62dc"
+},
+{
+"address": "80616000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c72dc"
+},
+{
+"address": "80617000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c82dc"
+},
+{
+"address": "80618000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1c92dc"
+},
+{
+"address": "80619000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1ca2dc"
+},
+{
+"address": "8061a000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1cb2dc"
+},
+{
+"address": "8061b000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1cc2dc"
+},
+{
+"address": "8061c000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1cd2dc"
+},
+{
+"address": "8061d000",
+"class": "page",
+"oracle": "4f8ea6c03039d525",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1ce2dc"
+},
+{
+"address": "8061e000",
+"class": "page",
+"oracle": "ca8bb03382e672e4",
+"poll": 24,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1cf2dc"
+},
+{
+"address": "805a8000",
+"class": "page",
+"oracle": "09d891a0214d4b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1592dc"
+},
+{
+"address": "805a9000",
+"class": "page",
+"oracle": "4fcad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x15a2dc"
+},
+{
+"address": "805aa000",
+"class": "page",
+"oracle": "b8cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x15b2dc"
+},
+{
+"address": "805ab000",
+"class": "page",
+"oracle": "58cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x15c2dc"
+},
+{
+"address": "805ac000",
+"class": "page",
+"oracle": "aacad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x15d2dc"
+},
+{
+"address": "805ad000",
+"class": "page",
+"oracle": "d0cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x15e2dc"
+},
+{
+"address": "805ae000",
+"class": "page",
+"oracle": "bfcad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x15f2dc"
+},
+{
+"address": "805af000",
+"class": "page",
+"oracle": "eecad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1602dc"
+},
+{
+"address": "805b0000",
+"class": "page",
+"oracle": "72cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1612dc"
+},
+{
+"address": "805b1000",
+"class": "page",
+"oracle": "e4cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1622dc"
+},
+{
+"address": "805b2000",
+"class": "page",
+"oracle": "32cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1632dc"
+},
+{
+"address": "805b3000",
+"class": "page",
+"oracle": "35cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1642dc"
+},
+{
+"address": "805b4000",
+"class": "page",
+"oracle": "f8cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1652dc"
+},
+{
+"address": "805b5000",
+"class": "page",
+"oracle": "1ecad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1662dc"
+},
+{
+"address": "805b6000",
+"class": "page",
+"oracle": "3ccad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1672dc"
+},
+{
+"address": "805b7000",
+"class": "page",
+"oracle": "072cb83aed62ee96",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1682dc"
+},
+{
+"address": "805b8000",
+"class": "page",
+"oracle": "0f40b7c1c2336225",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1692dc"
+},
+{
+"address": "805b9000",
+"class": "page",
+"oracle": "f97d86e71e841615",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x16a2dc"
+},
+{
+"address": "805ba000",
+"class": "page",
+"oracle": "77e93eb78287bb87",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x16b2dc"
+},
+{
+"address": "805bb000",
+"class": "page",
+"oracle": "3ccad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x16c2dc"
+},
+{
+"address": "805bc000",
+"class": "page",
+"oracle": "e1cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x16d2dc"
+},
+{
+"address": "805bd000",
+"class": "page",
+"oracle": "fb02e3c1cf6a99f4",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x16e2dc"
+},
+{
+"address": "805be000",
+"class": "page",
+"oracle": "235af1ef9b8b4772",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x16f2dc"
+},
+{
+"address": "805bf000",
+"class": "page",
+"oracle": "423e1f81c18b53a4",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1702dc"
+},
+{
+"address": "805c0000",
+"class": "page",
+"oracle": "95f49aecaccdd851",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1712dc"
+},
+{
+"address": "805c1000",
+"class": "page",
+"oracle": "cfcad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1722dc"
+},
+{
+"address": "805c2000",
+"class": "page",
+"oracle": "34cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1732dc"
+},
+{
+"address": "805c3000",
+"class": "page",
+"oracle": "54cad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1742dc"
+},
+{
+"address": "805c4000",
+"class": "page",
+"oracle": "facad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1752dc"
+},
+{
+"address": "805c5000",
+"class": "page",
+"oracle": "6ccad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1762dc"
+},
+{
+"address": "805c6000",
+"class": "page",
+"oracle": "2bcad9534e254b25",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1772dc"
+},
+{
+"address": "805c7000",
+"class": "page",
+"oracle": "3d50e63e7a0e7025",
+"poll": 25,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x1782dc"
+},
+{
+"address": "80500000",
+"class": "page",
+"oracle": "7ecad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb12dc"
+},
+{
+"address": "80501000",
+"class": "page",
+"oracle": "20cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb22dc"
+},
+{
+"address": "80502000",
+"class": "page",
+"oracle": "22cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb32dc"
+},
+{
+"address": "80503000",
+"class": "page",
+"oracle": "04cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb42dc"
+},
+{
+"address": "80504000",
+"class": "page",
+"oracle": "67cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb52dc"
+},
+{
+"address": "80505000",
+"class": "page",
+"oracle": "1acad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb62dc"
+},
+{
+"address": "80506000",
+"class": "page",
+"oracle": "52cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb72dc"
+},
+{
+"address": "80507000",
+"class": "page",
+"oracle": "74cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb82dc"
+},
+{
+"address": "80508000",
+"class": "page",
+"oracle": "82cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xb92dc"
+},
+{
+"address": "80509000",
+"class": "page",
+"oracle": "9bcad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xba2dc"
+},
+{
+"address": "8050a000",
+"class": "page",
+"oracle": "accad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xbb2dc"
+},
+{
+"address": "8050b000",
+"class": "page",
+"oracle": "c0cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xbc2dc"
+},
+{
+"address": "8050c000",
+"class": "page",
+"oracle": "72cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xbd2dc"
+},
+{
+"address": "8050d000",
+"class": "page",
+"oracle": "42cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xbe2dc"
+},
+{
+"address": "8050e000",
+"class": "page",
+"oracle": "23b75aebae212649",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xbf2dc"
+},
+{
+"address": "8050f000",
+"class": "page",
+"oracle": "583cad2148453b66",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc02dc"
+},
+{
+"address": "80510000",
+"class": "page",
+"oracle": "bbf23944d92147af",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc12dc"
+},
+{
+"address": "80511000",
+"class": "page",
+"oracle": "0f2640ac07cb61f1",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc22dc"
+},
+{
+"address": "80512000",
+"class": "page",
+"oracle": "4fcad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc32dc"
+},
+{
+"address": "80513000",
+"class": "page",
+"oracle": "b8cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc42dc"
+},
+{
+"address": "80514000",
+"class": "page",
+"oracle": "58cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc52dc"
+},
+{
+"address": "80515000",
+"class": "page",
+"oracle": "35feb8029e109523",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc62dc"
+},
+{
+"address": "80516000",
+"class": "page",
+"oracle": "2dac955a1474b73d",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc72dc"
+},
+{
+"address": "80517000",
+"class": "page",
+"oracle": "95b52ff43956db9c",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc82dc"
+},
+{
+"address": "80518000",
+"class": "page",
+"oracle": "eecad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xc92dc"
+},
+{
+"address": "80519000",
+"class": "page",
+"oracle": "72cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xca2dc"
+},
+{
+"address": "8051a000",
+"class": "page",
+"oracle": "e4cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xcb2dc"
+},
+{
+"address": "8051b000",
+"class": "page",
+"oracle": "32cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xcc2dc"
+},
+{
+"address": "8051c000",
+"class": "page",
+"oracle": "35cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xcd2dc"
+},
+{
+"address": "8051d000",
+"class": "page",
+"oracle": "f8cad9534e254b25",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xce2dc"
+},
+{
+"address": "8051e000",
+"class": "page",
+"oracle": "87715001f38c7025",
+"poll": 50,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0xcf2dc"
+},
+{
+"address": "8069f000",
+"class": "page",
+"oracle": "43cfc6eed3645c25",
+"poll": 60,
+"port": "982fa6eed3645c25",
+"symbol": "Hud_StartPanelMovers+0x2502dc"
+},
+{
+"address": "8069f000",
+"class": "page",
+"oracle": "3a6b5eeed3645c25",
+"poll": 86,
+"port": "3617a6eed3645c25",
+"symbol": "Hud_StartPanelMovers+0x2502dc"
+},
+{
+"address": "8069f000",
+"class": "page",
+"oracle": "3a6b5eeed3645c25",
+"poll": 983,
+"port": "3617a6eed3645c25",
+"symbol": "Hud_StartPanelMovers+0x2502dc"
+},
+{
+"address": "801d9000",
+"class": "page",
+"oracle": "ac0dfcbf9eb46cd6",
+"poll": 1036,
+"port": "9c48ad329d768a42",
+"symbol": "g_runtimeHeapStart+0x6b000"
+},
+{
+"address": "801da000",
+"class": "page",
+"oracle": "c17b70d9be630a25",
+"poll": 1036,
+"port": "03e9eaf4e7a13e3e",
+"symbol": "g_runtimeHeapStart+0x6c000"
+},
+{
+"address": "801db000",
+"class": "page",
+"oracle": "ca03b68643eb63e6",
+"poll": 1036,
+"port": "2819052911d91d23",
+"symbol": "g_runtimeHeapStart+0x6d000"
+},
+{
+"address": "801dc000",
+"class": "page",
+"oracle": "10fd1591089c8f69",
+"poll": 1036,
+"port": "ebb16735579985b6",
+"symbol": "g_runtimeHeapStart+0x6e000"
+},
+{
+"address": "801dd000",
+"class": "page",
+"oracle": "68b4651c3e121f88",
+"poll": 1036,
+"port": "5924de2fedbf99d3",
+"symbol": "g_runtimeHeapStart+0x6f000"
+},
+{
+"address": "801de000",
+"class": "page",
+"oracle": "ab50f804ff22f89c",
+"poll": 1036,
+"port": "07491f6d07169c57",
+"symbol": "g_runtimeHeapStart+0x70000"
+},
+{
+"address": "801df000",
+"class": "page",
+"oracle": "02d0d2c7bb738625",
+"poll": 1036,
+"port": "35597e56e2cd7bd6",
+"symbol": "g_runtimeHeapStart+0x71000"
+},
+{
+"address": "801e0000",
+"class": "page",
+"oracle": "293390c8a30cdb25",
+"poll": 1036,
+"port": "c46b10bd4b3b3117",
+"symbol": "g_runtimeHeapStart+0x72000"
+},
+{
+"address": "801e1000",
+"class": "page",
+"oracle": "5a8bc2cad5460e22",
+"poll": 1036,
+"port": "4dc82fb69d307069",
+"symbol": "g_runtimeHeapStart+0x73000"
+},
+{
+"address": "801e2000",
+"class": "page",
+"oracle": "daed83ed8f698ecd",
+"poll": 1036,
+"port": "2552dad06e0c1296",
+"symbol": "g_runtimeHeapStart+0x74000"
+},
+{
+"address": "801e3000",
+"class": "page",
+"oracle": "465f1655dccb4ae7",
+"poll": 1036,
+"port": "7a299b06a2d5670c",
+"symbol": "g_runtimeHeapStart+0x75000"
+},
+{
+"address": "801e4000",
+"class": "page",
+"oracle": "df8c339fd033c36e",
+"poll": 1036,
+"port": "a3114b806355c41b",
+"symbol": "g_runtimeHeapStart+0x76000"
+},
+{
+"address": "801e5000",
+"class": "page",
+"oracle": "056c166a4fb857b1",
+"poll": 1036,
+"port": "8cd03f35a2173e47",
+"symbol": "g_runtimeHeapStart+0x77000"
+},
+{
+"address": "801e6000",
+"class": "page",
+"oracle": "36331984f59a9d01",
+"poll": 1036,
+"port": "7dd0f26f6e3405e2",
+"symbol": "g_runtimeHeapStart+0x78000"
+},
+{
+"address": "801e7000",
+"class": "page",
+"oracle": "23874821d7774527",
+"poll": 1036,
+"port": "0955630c66229f1c",
+"symbol": "g_runtimeHeapStart+0x79000"
+},
+{
+"address": "801e8000",
+"class": "page",
+"oracle": "f9eddb75ad209836",
+"poll": 1036,
+"port": "2b193a96dc8f6870",
+"symbol": "g_runtimeHeapStart+0x7a000"
+},
+{
+"address": "801e9000",
+"class": "page",
+"oracle": "a0d9082843ae33c7",
+"poll": 1036,
+"port": "41817e08d547b386",
+"symbol": "g_runtimeHeapStart+0x7b000"
+},
+{
+"address": "801ea000",
+"class": "page",
+"oracle": "b6365f15dfc1b5dc",
+"poll": 1036,
+"port": "21e988e2a4d83494",
+"symbol": "g_runtimeHeapStart+0x7c000"
+},
+{
+"address": "801eb000",
+"class": "page",
+"oracle": "d01d10ff1228659e",
+"poll": 1036,
+"port": "0ce4e11c2837669e",
+"symbol": "g_runtimeHeapStart+0x7d000"
+},
+{
+"address": "801ec000",
+"class": "page",
+"oracle": "5c2c7f6f1ae590d2",
+"poll": 1036,
+"port": "bd3eac7e7bd7acbb",
+"symbol": "g_runtimeHeapStart+0x7e000"
+},
+{
+"address": "801ed000",
+"class": "page",
+"oracle": "27134585618a2f21",
+"poll": 1036,
+"port": "0dbf8a6c1b5e59ac",
+"symbol": "g_runtimeHeapStart+0x7f000"
+},
+{
+"address": "801ee000",
+"class": "page",
+"oracle": "354eb0118be1b27d",
+"poll": 1036,
+"port": "d0b18f0164f8971e",
+"symbol": "g_runtimeHeapStart+0x80000"
+},
+{
+"address": "801ef000",
+"class": "page",
+"oracle": "b1c93f7687046492",
+"poll": 1036,
+"port": "dc747161fcae9ca2",
+"symbol": "g_runtimeHeapStart+0x81000"
+},
+{
+"address": "801f0000",
+"class": "page",
+"oracle": "cfd46a7bcd534bea",
+"poll": 1036,
+"port": "927ab10435349696",
+"symbol": "g_runtimeHeapStart+0x82000"
+},
+{
+"address": "801f1000",
+"class": "page",
+"oracle": "a55647a4d431e225",
+"poll": 1036,
+"port": "82d6f906aab5e470",
+"symbol": "g_runtimeHeapStart+0x83000"
+},
+{
+"address": "801f2000",
+"class": "page",
+"oracle": "a221871882cb198c",
+"poll": 1036,
+"port": "1301e626e8f11229",
+"symbol": "g_runtimeHeapStart+0x84000"
+},
+{
+"address": "801f3000",
+"class": "page",
+"oracle": "281ae5f970c6ebd3",
+"poll": 1036,
+"port": "ecd11d6291d71336",
+"symbol": "g_runtimeHeapStart+0x85000"
+},
+{
+"address": "801f4000",
+"class": "page",
+"oracle": "d64a75f4c0e80ea1",
+"poll": 1036,
+"port": "90e6f1fd43455a02",
+"symbol": "g_runtimeHeapStart+0x86000"
+},
+{
+"address": "801f5000",
+"class": "page",
+"oracle": "02aa049a797d0b1c",
+"poll": 1036,
+"port": "3d7058491f6a920a",
+"symbol": "g_runtimeHeapStart+0x87000"
+},
+{
+"address": "801f6000",
+"class": "page",
+"oracle": "4bb444c2f7fcca25",
+"poll": 1036,
+"port": "e951ffa1b49973da",
+"symbol": "g_runtimeHeapStart+0x88000"
+},
+{
+"address": "80678000",
+"class": "page",
+"oracle": "73d20163f013c6f9",
+"poll": 1036,
+"port": "319b3157d5f8e425",
+"symbol": "Hud_StartPanelMovers+0x2292dc"
+},
+{
+"address": "80679000",
+"class": "page",
+"oracle": "63e207f9325a14a0",
+"poll": 1036,
+"port": "9793ce9daad20cad",
+"symbol": "Hud_StartPanelMovers+0x22a2dc"
+},
+{
+"address": "8067a000",
+"class": "page",
+"oracle": "0d6c318e6378b258",
+"poll": 1036,
+"port": "f7958a63c43b0aa2",
+"symbol": "Hud_StartPanelMovers+0x22b2dc"
+},
+{
+"address": "8067b000",
+"class": "page",
+"oracle": "219b2639ac26c06f",
+"poll": 1036,
+"port": "7e2da47fb9586d86",
+"symbol": "Hud_StartPanelMovers+0x22c2dc"
+},
+{
+"address": "80110000",
+"class": "page",
+"oracle": "e3807507571e0195",
+"poll": 1808,
+"port": "76bc2f4231a6e6a5",
+"symbol": "D_8010FE28_us_rev1+0x1d8"
+},
+{
+"address": "801f7000",
+"class": "page",
+"oracle": "829b203f65df5aa2",
+"poll": 2100,
+"port": "ade2a2b41e6ae8c1",
+"symbol": "g_runtimeHeapStart+0x89000"
+},
+{
+"address": "801f8000",
+"class": "page",
+"oracle": "2d6d5a6b2e5b12f5",
+"poll": 2100,
+"port": "9653f6bbcd14d57c",
+"symbol": "g_runtimeHeapStart+0x8a000"
+},
+{
+"address": "801f9000",
+"class": "page",
+"oracle": "75d800fb611f2720",
+"poll": 2100,
+"port": "294b1ecaefdb07d1",
+"symbol": "g_runtimeHeapStart+0x8b000"
+},
+{
+"address": "801fa000",
+"class": "page",
+"oracle": "4e690dfa09afb6cb",
+"poll": 2100,
+"port": "9ef3ac55622fbc9c",
+"symbol": "g_runtimeHeapStart+0x8c000"
+},
+{
+"address": "801fb000",
+"class": "page",
+"oracle": "1f0d32127c94c7f8",
+"poll": 2100,
+"port": "5761483a179229f3",
+"symbol": "g_runtimeHeapStart+0x8d000"
+},
+{
+"address": "801fc000",
+"class": "page",
+"oracle": "a3efdb4b817aa817",
+"poll": 2100,
+"port": "c13288d0a6bf747a",
+"symbol": "g_runtimeHeapStart+0x8e000"
+},
+{
+"address": "801fd000",
+"class": "page",
+"oracle": "b4a871e90984548c",
+"poll": 2100,
+"port": "c1b9c30ad9dfa162",
+"symbol": "g_runtimeHeapStart+0x8f000"
+},
+{
+"address": "801fe000",
+"class": "page",
+"oracle": "79f55e3fddc9d7a6",
+"poll": 2100,
+"port": "1a233754144e0307",
+"symbol": "g_runtimeHeapStart+0x90000"
+},
+{
+"address": "801ff000",
+"class": "page",
+"oracle": "a73afa278a93b0ee",
+"poll": 2100,
+"port": "3dfa9c369d12e07a",
+"symbol": "g_runtimeHeapStart+0x91000"
+},
+{
+"address": "80200000",
+"class": "page",
+"oracle": "fd8e7f4d67910bab",
+"poll": 2100,
+"port": "ab60ca8f1091588e",
+"symbol": "g_runtimeHeapStart+0x92000"
+},
+{
+"address": "80201000",
+"class": "page",
+"oracle": "b17c631dde23397d",
+"poll": 2100,
+"port": "85f45c524680a206",
+"symbol": "Libsn_FillPortBytes+0x68"
+},
+{
+"address": "80677000",
+"class": "page",
+"oracle": "e97abcbc2bb291f2",
+"poll": 2100,
+"port": "e7d56dfabf6a1c37",
+"symbol": "Hud_StartPanelMovers+0x2282dc"
+},
+{
+"address": "80102000",
+"class": "page",
+"oracle": "7ba2147ad7d86905",
+"poll": 2268,
+"port": "9f46a697b01c3093",
+"symbol": "D_801011B8_us_rev1+0xe48"
+},
+{
+"address": "8066d000",
+"class": "page",
+"oracle": "1f3be2d6daddf6de",
+"poll": 2268,
+"port": "cda692ecc217baaf",
+"symbol": "Hud_StartPanelMovers+0x21e2dc"
+},
+{
+"address": "8066e000",
+"class": "page",
+"oracle": "da8b5ba92b554f67",
+"poll": 2268,
+"port": "5002d2e0d82bdd6e",
+"symbol": "Hud_StartPanelMovers+0x21f2dc"
+},
+{
+"address": "8066f000",
+"class": "page",
+"oracle": "6cbbbc253340ba62",
+"poll": 2268,
+"port": "b7099fb0e8fd528c",
+"symbol": "Hud_StartPanelMovers+0x2202dc"
+},
+{
+"address": "80670000",
+"class": "page",
+"oracle": "1aa63b0d0de64f73",
+"poll": 2268,
+"port": "8a25aaaafc4fd831",
+"symbol": "Hud_StartPanelMovers+0x2212dc"
+},
+{
+"address": "80671000",
+"class": "page",
+"oracle": "4564ad7b82dff367",
+"poll": 2268,
+"port": "2418be963b4c976d",
+"symbol": "Hud_StartPanelMovers+0x2222dc"
+},
+{
+"address": "80672000",
+"class": "page",
+"oracle": "9142af2d62926bcc",
+"poll": 2268,
+"port": "e8b03b4a0e5db82b",
+"symbol": "Hud_StartPanelMovers+0x2232dc"
+},
+{
+"address": "80673000",
+"class": "page",
+"oracle": "4641041f6d0d1bd5",
+"poll": 2268,
+"port": "596e3cc14a6cafdb",
+"symbol": "Hud_StartPanelMovers+0x2242dc"
+},
+{
+"address": "80674000",
+"class": "page",
+"oracle": "61b8f1c6d2c4168e",
+"poll": 2268,
+"port": "1a4d8e347241090d",
+"symbol": "Hud_StartPanelMovers+0x2252dc"
+},
+{
+"address": "80675000",
+"class": "page",
+"oracle": "370b8b60ed18fea8",
+"poll": 2268,
+"port": "314e6d7cd015014c",
+"symbol": "Hud_StartPanelMovers+0x2262dc"
+},
+{
+"address": "80676000",
+"class": "page",
+"oracle": "8294dd60b7abea16",
+"poll": 2268,
+"port": "071d9a6f37cb4f9e",
+"symbol": "Hud_StartPanelMovers+0x2272dc"
+},
+{
+"address": "8069c000",
+"class": "page",
+"oracle": "f2611103cfaf5c62",
+"poll": 2268,
+"port": "fdb8008554960e6c",
+"symbol": "Hud_StartPanelMovers+0x24d2dc"
+},
+{
+"address": "806d2000",
+"class": "page",
+"oracle": "fe313243c31d09b1",
+"poll": 2268,
+"port": "69a55bfe87396c52",
+"symbol": "Hud_StartPanelMovers+0x2832dc"
+},
+{
+"address": "806e9000",
+"class": "page",
+"oracle": "eaef3243c31d09b1",
+"poll": 2268,
+"port": "ab4f5bfe87396c52",
+"symbol": "Hud_StartPanelMovers+0x29a2dc"
+},
+{
+"address": "8015c000",
+"class": "page",
+"oracle": "0a4ef022bfc923d0",
+"poll": 2275,
+"port": "ef36843abcdc5b60",
+"symbol": "g_menuInventoryPartSeventeenSecondExtraWords+0x45f0"
+},
+{
+"address": "8015d000",
+"class": "page",
+"oracle": "bf9ce585de9597b9",
+"poll": 2276,
+"port": "7da144b97d054b25",
+"symbol": "g_menuInventoryPartSeventeenSecondExtraWords+0x55f0"
+},
+{
+"address": "806a9000",
+"class": "page",
+"oracle": "7da144b97d054b25",
+"poll": 2288,
+"port": "3cc74c6771cfd096",
+"symbol": "Hud_StartPanelMovers+0x25a2dc"
+},
+{
+"address": "806b0000",
+"class": "page",
+"oracle": "0d0ca21de627d6c6",
+"poll": 2289,
+"port": "7da144b97d054b25",
+"symbol": "Hud_StartPanelMovers+0x2612dc"
+},
+{
+"address": "806ad000",
+"class": "page",
+"oracle": "7da144b97d054b25",
+"poll": 2291,
+"port": "9c429d75abf8779e",
+"symbol": "Hud_StartPanelMovers+0x25e2dc"
+}
+],
+"vi": []
+},
+"polls": {
+"common": 59584,
+"oracle": 59584,
+"port": 59584
+},
+"source": "head of RageWarsEnhanced lockstep.py match of pp-1p-match (run 11-07 17:02Z): every row through poll 2300, the first 12 page rows of poll 1, the first 6 clock rows and the call rows of polls 13885-13886"
+}
