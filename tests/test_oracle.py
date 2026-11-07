@@ -71,7 +71,7 @@ class Shape(unittest.TestCase):
 
 class Refusals(unittest.TestCase):
     def tree(self) -> Path:
-        tmp = Path(tempfile.mkdtemp())
+        tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, tmp, True)
         (tmp / "repo/ci").mkdir(parents=True)
         shutil.copy(ORACLE, tmp / "repo/ci/oracle")

@@ -64,7 +64,7 @@ def script(path: Path, text: str) -> None:
 
 class Resume(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.repo = self.tmp / "repo"
         n = self.repo / "hosts/n64recomp"

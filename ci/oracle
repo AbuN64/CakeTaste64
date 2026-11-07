@@ -20,7 +20,7 @@
 #   .venv/              the declared toolchain (pyproject.toml: abucache, unbake), made by ci/ensure_venv.py
 # Heavy: run it through `mo-terminal Admission Invoke --Class Batch`. Exit 0 only for a built and self-checked oracle.
 set -eu
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
 main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 state=$main/.state

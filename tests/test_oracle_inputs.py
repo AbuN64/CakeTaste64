@@ -30,7 +30,7 @@ def tools(missing: frozenset[str] = frozenset()):
 class RageWarsProfile(unittest.TestCase):
     def layout(self) -> Path:
         """CakeTaste64/hosts/n64recomp/ragewars.profile.json beside a RageWarsDecomp folder, as the workspace has it."""
-        tmp = Path(tempfile.mkdtemp())
+        tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, tmp, True)
         (tmp / "RageWarsDecomp").mkdir()
         target = tmp / "CakeTaste64/hosts/n64recomp"
@@ -268,7 +268,7 @@ class HostConfig(unittest.TestCase):
         self.assertIn("mips-linux-gnu-as", str(stop.exception))
 
     def test_the_command_writes_the_file_inside_the_state_folder(self):
-        tmp = Path(tempfile.mkdtemp())
+        tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, tmp, True)
         unbake_python = str(ROOT / ".venv-unbake/bin/python")
         done = subprocess.run(
