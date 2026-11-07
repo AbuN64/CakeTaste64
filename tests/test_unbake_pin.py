@@ -63,6 +63,33 @@ class UnbakePinTests(unittest.TestCase):
             subprocess.run([str(python), str(helper), str(makefile)], check=True)
             self.assertFalse(makefile.exists())
 
+    def test_makefile_refresh_with_a_host_writes_the_current_generators_makefile_when_absent_or_retired(self):
+        # A fresh checkout of the PINS commit has no Makefile, and setup extracts through one before its own sync
+        # (11-07: every recompile on a fresh .state refused setup.splat "No rule to make target 'extract-de'").
+        import subprocess
+        import tempfile
+
+        python = REPO / ".venv-unbake/bin/python"
+        helper = REPO / "hosts/n64recomp/refresh_makefile.py"
+        probe = (
+            "import sys, runpy; from pathlib import Path; import unbake.build as b, unbake.config as c\n"
+            "c.load = lambda root, host: (str(root), str(host))\n"
+            "b.makefile = lambda cfg: ('# generator: ' + b.generator_version() + '\\n# '\n"
+            "    + '|'.join(cfg) + '\\n').encode()\n"
+            "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            makefile, host = Path(tmp) / "Makefile", Path(tmp) / "unbake.toml"
+            for before in (None, "# generator: retired\nall:\n"):
+                makefile.unlink(missing_ok=True)
+                if before:
+                    makefile.write_text(before)
+                subprocess.run([str(python), "-c", probe, str(helper), str(makefile), str(host)], check=True)
+                self.assertTrue(makefile.read_text().endswith(f"# {tmp}|{host}\n"))
+            kept = makefile.read_text()
+            subprocess.run([str(python), "-c", probe, str(helper), str(makefile), str(host)], check=True)
+            self.assertEqual(makefile.read_text(), kept)  # the current generator's Makefile is kept as it is
+
     def test_selected_unbake_has_no_transitive_cache_revision_pin(self):
         import json
         import subprocess

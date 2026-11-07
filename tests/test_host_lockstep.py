@@ -83,7 +83,8 @@ class LockstepDocsTest(unittest.TestCase):
         source = (HOST / "lockstep.cpp").read_text(encoding="utf-8")
         names = set(re.findall(r"getenv\(\"(N64R_[A-Z_]+)\"\)", source))
         self.assertEqual(names, {"N64R_LOCKSTEP_DIR", "N64R_LOCKSTEP_RAM", "N64R_LOCKSTEP_CALLS",
-                                 "N64R_LOCKSTEP_WATCH", "N64R_LOCKSTEP_DUMP", "N64R_LOCKSTEP_CALLS_POLLS"})
+                                 "N64R_LOCKSTEP_WATCH", "N64R_LOCKSTEP_DUMP", "N64R_LOCKSTEP_CALLS_POLLS",
+                                 "N64R_LOCKSTEP_MASK"})
         docs = (HOST / "RUNTIME.md").read_text(encoding="utf-8")
         for name in names:
             self.assertIn(f"`{name}`", docs)
@@ -239,6 +240,38 @@ class LockstepPollTest(unittest.TestCase):
                                  text=True, timeout=30)
             self.assertEqual(bad.returncode, 3)  # a page outside RDRAM: the recorder stays off
             self.assertIn("lockstep dump off", bad.stderr)
+
+    def test_mask_zeroes_its_words_in_hashes_and_dumps_and_meta_repeats_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            (path / "driver.cpp").write_text(POLL_DRIVER.replace("return 0;\n}", "return 4;\n}"))
+            exe = path / "driver"
+            subprocess.run(["g++", "-std=c++17", "-O1", "-Wall", "-Werror", str(HOST / "lockstep.cpp"),
+                            str(path / "driver.cpp"), "-o", str(exe), "-lpthread"], check=True, capture_output=True,
+                           text=True)
+            out = path / "ls"
+            mask = "80001000-80001004,2000-2004"  # page 1's first word (KSEG0) and page 2's (physical)
+            env = dict(os.environ, N64R_LOCKSTEP_DIR=str(out), N64R_LOCKSTEP_RAM="0x4000", N64R_LOCKSTEP_MASK=mask)
+            result = subprocess.run([str(exe)], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 4, result.stderr)
+            lines = [json.loads(x) for x in (out / "lockstep.jsonl").read_text().splitlines()]
+            self.assertEqual(lines[0]["mask"], mask)
+            polls = [x for x in lines if x["k"] == "poll"]
+            zero = fnv(bytes(4096))
+            self.assertEqual(int(polls[0]["pages"][2][1], 16), zero)  # 11223344 masked
+            self.assertEqual(polls[1]["pages"], [])  # the byte stored at a masked word changes no hash
+            dumped = subprocess.run([str(exe)], env=dict(env, N64R_LOCKSTEP_DUMP="2:1,2"), capture_output=True,
+                                    text=True, timeout=30)
+            self.assertEqual(dumped.returncode, 0, dumped.stderr)
+            data = (out / "dump" / "2" / "dump.bin").read_bytes()
+            for at in range(0, len(data), 16 + 4096):
+                _, _, h = struct.unpack_from("<IIQ", data, at)
+                self.assertEqual((data[at + 16:at + 16 + 4096], h), (bytes(4096), zero))
+            for bad in ("80001001-80001004", "80001000", "2004-2000", "0-8000"):
+                off = subprocess.run([str(exe)], env=dict(env, N64R_LOCKSTEP_MASK=bad), capture_output=True,
+                                     text=True, timeout=30)
+                self.assertEqual(off.returncode, 3, bad)
+                self.assertIn("N64R_LOCKSTEP_MASK", off.stderr)
 
 
 # Per-thread pairs and the per-poll totals: main calls f three times and a second thread twice, before poll 1; one

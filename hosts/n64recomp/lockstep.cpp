@@ -32,6 +32,10 @@
 // Pages are hashed and dumped in canonical byte order (big-endian, as the cartridge-era CPU saw them): RDRAM keeps
 // each 32-bit word in host order (byte accesses use address ^ 3), so every word is byte-swapped back first.
 // The hash is FNV-1a over the little-endian 64-bit words of those bytes.
+// N64R_LOCKSTEP_MASK=LO-HI,... (hex addresses, KSEG0 or physical, word-aligned, HI exclusive) names words the record
+// leaves out: they hash and dump as zero, and meta `mask` repeats the value, so a match can check that both sides
+// masked the same words. The project's mask list names state each side keeps in its own form (the guest's stacks on
+// a host that runs threads on host stacks, say); the recorder knows no project.
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -97,6 +101,9 @@ thread_local std::vector<Frame> frames;
 struct Pages { std::vector<uint64_t> last; std::vector<uint8_t> shadow; bool started = false; };
 Pages &hit_pages = *new Pages;
 Pages &poll_pages = *new Pages;
+std::vector<uint8_t> &masked = *new std::vector<uint8_t>;  // per RDRAM word: 1 when N64R_LOCKSTEP_MASK names it
+std::vector<uint8_t> &masked_page = *new std::vector<uint8_t>;  // per page: 1 when it holds a masked word
+std::string &mask_spec = *new std::string;
 
 long tid() {  // once per thread: every call keys its pair by it
     thread_local const long id = (long)syscall(SYS_gettid);
@@ -156,6 +163,7 @@ uint64_t canonical(const uint8_t *rdram, uint32_t pg, uint8_t *page) {
     uint64_t h = 0xcbf29ce484222325ull;
     for (uint32_t i = 0; i < PAGE; i += 4) {
         uint32_t w = __builtin_bswap32(word(rdram, pg * PAGE + i));
+        if (pg < masked_page.size() && masked_page[pg] && masked[(pg * PAGE + i) / 4]) w = 0;
         std::memcpy(page + i, &w, 4);
     }
     for (uint32_t i = 0; i < PAGE; i += 8) {
@@ -211,6 +219,26 @@ void dump(const uint8_t *rdram) {
     std::_Exit(0);
 }
 
+// N64R_LOCKSTEP_MASK into masked/masked_page; 0 (and a message) for a spec it cannot read.
+int read_mask(const char *spec) {
+    masked.assign(ram_bytes / 4, 0);
+    masked_page.assign(ram_bytes / PAGE, 0);
+    mask_spec = spec;
+    for (const char *m = spec; *m;) {
+        char *end;
+        const unsigned long lo = std::strtoul(m, &end, 16) & 0x1FFFFFFFul;
+        if (*end != '-') return 0;
+        const unsigned long hi = std::strtoul(end + 1, &end, 16) & 0x1FFFFFFFul;
+        if ((*end && *end != ',') || (lo & 3) || (hi & 3) || hi <= lo || hi > ram_bytes) return 0;
+        for (unsigned long a = lo; a < hi; a += 4) {
+            masked[a / 4] = 1;
+            masked_page[a / PAGE] = 1;
+        }
+        m = *end ? end + 1 : end;
+    }
+    return 1;
+}
+
 int open_files() {
     const char *dir = std::getenv("N64R_LOCKSTEP_DIR");
     if (!dir || !*dir) return 0;
@@ -235,6 +263,10 @@ int open_files() {
         window_from = std::strtoull(c, &end, 10);
         window_to = *end == '-' ? std::strtoull(end + 1, nullptr, 10) : window_from;
     }
+    if (const char *m = std::getenv("N64R_LOCKSTEP_MASK"); m && *m && !read_mask(m)) {
+        std::fprintf(stderr, "n64host: lockstep off (N64R_LOCKSTEP_MASK is LO-HI,... word-aligned hex, got %s)\n", m);
+        return 0;
+    }
     mkdir(dir, 0777);
     std::string d(dir);
     if (const char *spec = std::getenv("N64R_LOCKSTEP_DUMP"); spec && *spec) return open_dump(d, spec);
@@ -252,6 +284,7 @@ int open_files() {
                   "\"hash\":\"fnv1a64-le64\",\"calls\":%u,\"frame\":\"poll\",\"ring\":\"pow2\",\"window\":%u,\"ordinal\":\"thread\",\"totals\":\"poll\",\"watch\":\"%08x\",", ram_bytes, PAGE, max_calls, WINDOW,
                   watching ? 0x80000000u + watches[0].phys : 0u);
     std::string line(meta);
+    line += "\"mask\":\"" + mask_spec + "\",";
     line += "\"replaced\":[";  // the runtime replacements' vrams, from the table main.cpp registers (replaced_funcs.inl)
     for (size_t i = 0; uint32_t vram = n64host_replaced_vram(i); i++) {
         char v[16];

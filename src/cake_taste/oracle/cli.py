@@ -22,9 +22,12 @@ def run(profile: Any, argv: tuple[str, ...]) -> dict[str, Any]:
     record.add_argument(
         "--calls", type=int, default=8, help="calls kept per (caller, function), the recorder's default"
     )
+    record.add_argument(
+        "--mask", default="", help="N64R_LOCKSTEP_MASK: LO-HI,... words the record hashes and dumps as zero"
+    )
     args = parser.parse_args(argv)
     movie = args.movie.resolve()
     polls = args.exit_after or sum(1 for line in movie.read_text().splitlines() if line.strip())
-    params = {"pak": args.pak, "pads": args.pads, "exit_after": polls, "calls": args.calls}
+    params = {"pak": args.pak, "pads": args.pads, "exit_after": polls, "calls": args.calls, "mask": args.mask}
     layout = store.discover(Path(__file__).resolve().parent, args.version)
     return store.record(layout, movie, params, args.into)

@@ -403,6 +403,10 @@ under `N64R_` names and runs with no display server (no X11, no Wayland composit
   reports its changes in those polls.
 - `N64R_LOCKSTEP_CALLS_POLLS`: `FROM-TO`; every call that falls in those polls is recorded (all ordinals), beside the
   first `N64R_LOCKSTEP_CALLS` and the power-of-two ring.
+- `N64R_LOCKSTEP_MASK`: `LO-HI,...` (hex RDRAM addresses, KSEG0 or physical, word-aligned, HI exclusive); those
+  words hash and dump as zero, and meta `mask` repeats the value, so a match can check that both sides masked the
+  same words. decomp hands both sides the one list (`tas.oracle.lockstep_mask`, the project's file of state each
+  side keeps in its own form); a malformed value leaves the recorder off.
 Returns pair with entries by name and stack pointer; frames left above a return
 (tail calls) are dropped. The port's own tool does the comparison.
 

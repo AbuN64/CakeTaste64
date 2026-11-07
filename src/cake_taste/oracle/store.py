@@ -29,7 +29,10 @@ RECORD = "lockstep.jsonl"
 FACTS = "record.json"
 VERSION = "us-rev1"
 # What the movie does not say but the record depends on; a request for the same address with other values is refused.
-PARAMS = ("pak", "pads", "exit_after", "calls")
+PARAMS = ("pak", "pads", "exit_after", "calls", "mask")
+# A record made under a lockstep mask (N64R_LOCKSTEP_MASK) hashes other words than an unmasked one: the mask is part of
+# the address (a suffix of the movie folder), so a masked request is never served an unmasked record or the reverse.
+DEFAULTS = {"mask": ""}
 
 Runner = Callable[[list[str], Mapping[str, str], Path], int]
 
@@ -75,8 +78,13 @@ def sha1_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def folder(layout: Layout, rom_sha1: str, movie_sha256: str) -> Path:
-    return layout.store / rom_sha1 / layout.key / movie_sha256
+def mask_sha256(mask: str) -> str:
+    return hashlib.sha256(mask.encode()).hexdigest() if mask else ""
+
+
+def folder(layout: Layout, rom_sha1: str, movie_sha256: str, mask: str = "") -> Path:
+    leaf = movie_sha256 + (f"-mask-{mask_sha256(mask)[:16]}" if mask else "")
+    return layout.store / rom_sha1 / layout.key / leaf
 
 
 def host_env(layout: Layout, state: Path, movie: Path, out: Path, params: Mapping[str, Any]) -> dict[str, str]:
@@ -100,6 +108,7 @@ def host_env(layout: Layout, state: Path, movie: Path, out: Path, params: Mappin
         "N64R_TAS_EXIT_AFTER": str(params["exit_after"]),
         "N64R_LOCKSTEP_DIR": str(out),
         "N64R_LOCKSTEP_CALLS": str(params["calls"]),
+        **({"N64R_LOCKSTEP_MASK": str(params["mask"])} if params.get("mask") else {}),
     }
 
 
@@ -139,12 +148,16 @@ def record(
 def _record(
     layout: Layout, movie: Path, params: Mapping[str, Any], into: Path | None, runner: Runner, began: Any
 ) -> dict[str, Any]:
+    params = {**DEFAULTS, **params}
     rom_sha1, movie_sha256 = sha1_file(layout.rom), sha256_file(movie)
-    final = folder(layout, rom_sha1, movie_sha256)
+    final = folder(layout, rom_sha1, movie_sha256, str(params["mask"]))
     address = {"rom_sha1": rom_sha1, "oracle_key": layout.key, "movie_sha256": movie_sha256}
+    if params["mask"]:
+        address["mask_sha256"] = mask_sha256(str(params["mask"]))
     if (final / FACTS).is_file():
         facts = json.loads((final / FACTS).read_text())
-        if any(facts["params"][name] != params[name] for name in PARAMS):
+        stored = {**DEFAULTS, **facts["params"]}
+        if any(stored[name] != params[name] for name in PARAMS):
             raise TasteError(
                 "oracle.params",
                 f"{final} holds a record made with {facts['params']}, not {dict(params)}; "

@@ -73,6 +73,27 @@ class Store(unittest.TestCase):
             store.record(self.layout, self.movie, {**PARAMS, "exit_after": 5}, None, self.runner())
         self.assertEqual(raised.exception.key, "oracle.params")
 
+    def test_a_mask_is_its_own_address_and_reaches_the_host(self):
+        plain = store.record(self.layout, self.movie, PARAMS, None, self.runner())
+        masked = store.record(self.layout, self.movie, {**PARAMS, "mask": "800e9400-800ebc00"}, None, self.runner())
+        again = store.record(self.layout, self.movie, {**PARAMS, "mask": "800e9400-800ebc00"}, None, self.runner(9))
+        other = store.record(self.layout, self.movie, {**PARAMS, "mask": "800e9400-800ebc04"}, None, self.runner())
+        self.assertEqual([r["served"] for r in (plain, masked, again, other)], [False, False, True, False])
+        self.assertEqual(len({plain["path"], masked["path"], other["path"]}), 3)
+        self.assertNotIn("N64R_LOCKSTEP_MASK", self.runs[0])
+        self.assertEqual(self.runs[1]["N64R_LOCKSTEP_MASK"], "800e9400-800ebc00")
+        self.assertEqual(masked["mask_sha256"], store.mask_sha256("800e9400-800ebc00"))
+        self.assertNotIn("mask_sha256", plain)
+
+    def test_a_record_stored_before_the_mask_is_served_unmasked(self):
+        final = store.folder(self.layout, store.sha1_file(self.layout.rom), store.sha256_file(self.movie))
+        final.mkdir(parents=True)
+        (final / store.RECORD).write_bytes(SLICE.read_bytes())
+        (final / store.FACTS).write_text(json.dumps({"params": PARAMS, "bytes": 1, "seconds": 1}))
+        self.assertTrue(store.record(self.layout, self.movie, PARAMS, None, self.runner(9))["served"])
+        masked = store.record(self.layout, self.movie, {**PARAMS, "mask": "0-4"}, None, self.runner())
+        self.assertFalse(masked["served"])
+
     def test_failed_or_empty_oracle_stores_nothing(self):
         for runner, key in (
             (self.runner(code=3), "oracle.failed"),
