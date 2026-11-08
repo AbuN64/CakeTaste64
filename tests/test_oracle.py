@@ -47,9 +47,17 @@ class Shape(unittest.TestCase):
                 "RAGEWARS_LOCAL",
                 "TOOLKIT",
                 "http://",
-                "JOBS:?",
+                "nproc",
+                "cpu_count",
             ):
                 self.assertNotIn(literal, text, f"{script.name}: {literal}")
+
+    def test_the_build_width_is_the_admitted_jobs_and_none_refuses(self):
+        # The one environment input: the width Terminal admission gave the job. nproc sizes it to the whole host
+        # (13 unbake workers plus cc1 under JOBS=4 on 12 cores), so there is no fallback either.
+        text = ORACLE.read_text()
+        self.assertRegex(text, r"jobs=\$\{JOBS:\?")
+        self.assertNotRegex(text, r"\$\{JOBS:[-=]")
 
     def test_the_decomp_is_the_sibling_repo_and_the_state_is_beside_the_main_working_tree(self):
         text = ORACLE.read_text()

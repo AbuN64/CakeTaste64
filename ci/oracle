@@ -118,7 +118,7 @@ build() {
     command -v "$tool" > /dev/null || { echo "oracle: $tool is missing from PATH; hosts/n64recomp/TOOLCHAIN declares GCC major $major, install $tool" >&2; exit 1; }
   done
   sha=$(git rev-parse HEAD)
-  jobs=$(nproc)
+  jobs=${JOBS:?oracle: JOBS is unset; run under Terminal admission (mo-terminal Admission Invoke sets JOBS)}
   py=$(python3 ci/ensure_venv.py)
   upy=$(python3 ci/ensure_venv.py unbake)  # unbake's own environment: it pins an abucache older than ours
   unbake=$(dirname "$upy")/unbake
@@ -147,7 +147,10 @@ build() {
   fi
   step deps "$depskey" sh $n/deps.sh "$deps"
   step abumas "$depskey" build_abumas
-  "$upy" $n/host_config.py "$host" "$state" --abumas "$state/tools/abumas"
+  "$upy" $n/host_config.py "$host" "$state" --abumas "$state/tools/abumas" --runtime "$state/abu-runtime.toml"
+  # abucache (the decomp Makefile's make admission, unbake's pool) reads this tree's runtime file, JOBS wide like the
+  # host config it is rendered from; the operator runtime file in the home directory is never read.
+  export ABU_RUNTIME="$state/abu-runtime.toml"
   rc=$state/oracle-recomp/$recompkey
   mkdir -p "$rc"
   step recompile "$recompkey" sh $n/recompile.sh "$rc" "$root" "$decomp" "$profile" "$version" "$rom" "$py" "$unbake" "$host" "$jobs" "$deps" "$@"

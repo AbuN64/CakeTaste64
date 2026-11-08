@@ -1,6 +1,7 @@
 """The oracle's own inputs: the tracked RageWars profile and the unbake host config ci/oracle writes for itself."""
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -232,7 +233,7 @@ class HostConfig(unittest.TestCase):
             self.template,
             Path("/state"),
             abumas,
-            12,
+            4,
             host_config.memory_total(MEMINFO),
             400_000_000_000,
             tools(missing),
@@ -250,10 +251,22 @@ class HostConfig(unittest.TestCase):
 
     def test_resources_derive_from_the_host_not_from_literals(self):
         config = self.render()
-        self.assertEqual((config["resources"]["cores"], config["resources"]["workers"]), ("auto", "auto"))
+        self.assertEqual((config["resources"]["cores"], config["resources"]["workers"]), (4, 4))
         self.assertEqual(config["resources"]["memory_parent_bytes"], 24576000 * 1024 // 16)
-        self.assertEqual(config["resources"]["memory_worker_bytes"], 24576000 * 1024 // 24)
+        self.assertEqual(config["resources"]["memory_worker_bytes"], 24576000 * 1024 // 8)  # 2 x JOBS, never CPUs
         self.assertEqual(config["cache"]["max_bytes"], 100_000_000_000)
+
+    def test_cores_and_workers_are_the_admitted_jobs_and_never_auto(self):
+        self.assertEqual(host_config.admitted_jobs({"JOBS": "4"}), 4)
+        config = self.render()
+        self.assertEqual((config["resources"]["cores"], config["resources"]["workers"]), (4, 4))
+        jsonschema.validate(config, self.schema)
+
+    def test_an_absent_or_unusable_jobs_refuses(self):
+        for environ in ({}, {"JOBS": ""}, {"JOBS": "0"}, {"JOBS": "auto"}, {"JOBS": "-2"}):
+            with self.subTest(environ=environ), self.assertRaises(SystemExit) as raised:
+                host_config.admitted_jobs(environ)
+            self.assertIn("JOBS", str(raised.exception))
 
     def test_an_optional_tool_that_is_not_found_is_left_out_and_the_config_still_validates(self):
         config = self.render(abumas=None, missing=frozenset({"armips"}))
@@ -271,6 +284,8 @@ class HostConfig(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, tmp, True)
         unbake_python = str(ROOT / ".venv-unbake/bin/python")
+        (tmp / "abumas").write_text("#!/bin/sh\n")  # ci/oracle builds abumas before; unbake checks it runs
+        (tmp / "abumas").chmod(0o755)
         done = subprocess.run(
             [
                 unbake_python,
@@ -279,15 +294,23 @@ class HostConfig(unittest.TestCase):
                 str(tmp / "state"),
                 "--abumas",
                 str(tmp / "abumas"),
+                "--runtime",
+                str(tmp / "abu-runtime.toml"),
             ],
             capture_output=True,
             text=True,
             check=False,
+            env={**os.environ, "JOBS": "4"},
         )
         if done.returncode:
             self.assertIn("not on PATH", done.stderr)  # a machine without the mips binutils refuses by name
             return
         text = (tmp / "unbake.toml").read_text()
+        self.assertTrue(re.search(r"^cores = 4$", text, re.MULTILINE), text)
+        self.assertTrue(re.search(r"^workers = 4$", text, re.MULTILINE), text)
+        runtime = (tmp / "abu-runtime.toml").read_text()  # abucache's file: the same admitted widths
+        self.assertTrue(re.search(r"^cores = 4$", runtime, re.MULTILINE), runtime)
+        self.assertTrue(re.search(r"^workers = 4$", runtime, re.MULTILINE), runtime)
         self.assertTrue(re.search(rf'^dir = "{tmp}/state/unbake-cache"$', text, re.MULTILINE))
 
 

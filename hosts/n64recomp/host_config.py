@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""host_config.py OUT STATE [--abumas PATH]: this tree's own unbake host config, written to OUT from unbake's template.
+"""host_config.py OUT STATE [--abumas PATH] [--runtime PATH]: this tree's own unbake host config, written to OUT from
+unbake's template, and with --runtime the abucache runtime file rendered from it (unbake.hostruntime: the decomp
+Makefile's make admission and abucache's pool read it through ABU_RUNTIME, never ~/.config/abu/runtime.toml).
 
 The operator's ~/.config/unbake/unbake.toml is never read or edited. Every value comes from this host or the tree:
 tools on PATH (git, make, cpp, the mips binutils, splat; armips only when found), abumas as given (ci/oracle builds it),
-the cache and toolchain folders inside STATE (the tree's git-ignored state), cores and workers "auto", and the memory
-limits from what the host has (/proc/meminfo), never a literal. Run with the python of .venv-unbake."""
+the cache and toolchain folders inside STATE (the tree's git-ignored state), cores and workers from the admitted JOBS
+(the width Terminal admission gave this job; absent or not a positive integer refuses: "auto" sizes unbake's pool from
+the whole host and over-subscribes it), and the memory limits from what the host has (/proc/meminfo) shared by the
+JOBS workers (never the host's CPU count), never a literal.
+Run with the python of .venv-unbake."""
 
 import argparse
 import os
@@ -28,7 +33,18 @@ def memory_total(meminfo: str) -> int:
     return int(found[1]) * 1024
 
 
-def render(template: str, state: Path, abumas: str | None, cpus: int, memory: int, disk_free: int,
+def admitted_jobs(environ) -> int:
+    """The admitted width JOBS of ENVIRON; absent, empty or not a positive integer stops it."""
+    value = environ.get("JOBS", "")
+    if not value.isdigit() or int(value) < 1:
+        raise SystemExit(
+            f"host_config: JOBS={value!r} is not an admitted width; run under Terminal admission "
+            "(mo-terminal Admission Invoke sets JOBS) or set JOBS to a positive integer"
+        )
+    return int(value)
+
+
+def render(template: str, state: Path, abumas: str | None, jobs: int, memory: int, disk_free: int,
            which=shutil.which) -> str:
     """The host config for STATE from the unbake host template; a missing required tool stops it, naming the tool."""
     tools, missing = {}, []
@@ -43,8 +59,8 @@ def render(template: str, state: Path, abumas: str | None, cpus: int, memory: in
         tools[key] = which(binary)
     tools["abumas"] = abumas
     values = {
-        "cores": '"auto"', "workers": '"auto"',
-        "memory_parent_bytes": memory // 16, "memory_worker_bytes": memory // (2 * cpus),
+        "cores": jobs, "workers": jobs,
+        "memory_parent_bytes": memory // 16, "memory_worker_bytes": memory // (2 * jobs),
         "cache_dir": state / "unbake-cache", "cache_max_bytes": disk_free // 4,
         "toolchain_root": state / "toolchains",
         "serial_seconds": 2, "serial_cores": 2, "pool_fill": 0.8, "pool_fanout": 2,
@@ -65,13 +81,20 @@ def main(argv: list[str]) -> int:
     parser.add_argument("out", type=Path)
     parser.add_argument("state", type=Path)
     parser.add_argument("--abumas")
+    parser.add_argument("--runtime", type=Path)
     args = parser.parse_args(argv)
+    jobs = admitted_jobs(os.environ)
     template = (resources.files("unbake.resources") / "templates" / "host.toml").read_text()
     args.state.mkdir(parents=True, exist_ok=True)
-    text = render(template, args.state.resolve(), args.abumas, os.process_cpu_count(),
+    text = render(template, args.state.resolve(), args.abumas, jobs,
                   memory_total(Path("/proc/meminfo").read_text()), shutil.disk_usage(args.state).free)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text)
+    if args.runtime:  # the same widths: unbake resolves the host config just written, its runtime file follows it
+        from unbake import config, hostruntime
+
+        args.runtime.parent.mkdir(parents=True, exist_ok=True)
+        args.runtime.write_text(hostruntime.runtime_toml(config.load_host(args.out)))
     return 0
 
 

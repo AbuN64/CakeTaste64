@@ -82,7 +82,9 @@ does not declare.
 
 `ci/oracle build` builds the N64Recomp oracle (`n64host`) and runs its self-check (boot-idle twice, the two state
 hashes must be equal); `ci/oracle selfcheck [HOST]` repeats the check. It is heavy: run it on host W through
-`mo-terminal Admission Invoke --Class Batch`. Every path comes from the repository, none from the environment:
+`mo-terminal Admission Invoke --Class Batch`. Its width is the admitted `JOBS` (make, the host build, and unbake's
+`cores` and `workers`); `ci/oracle build` refuses when `JOBS` is unset. Every path comes from the repository, none from
+the environment:
 
 - the decomp is the working copy `RageWarsDecomp` beside this repository's own top level (the parent of `git rev-parse --path-format=absolute --show-toplevel`: beside the checkout, or beside a run's worktree, never the registered checkout's, and with no fallback to it; its `roms/` holds the dumps, its history the PINS commit); `RageWarsEnhanced` (the profile's lockstep map) is found the same way;
 - the state is one git-ignored `.state/` beside the main working tree (`$main/.state`, `$main` the parent of `git rev-parse --path-format=absolute --git-common-dir`): a checkout and every worktree of it share it, so a new run worktree reuses each step whose input digest matches (the step keys are content digests, never a path); builds take `.state/oracle.lock` one at a time;
@@ -93,5 +95,8 @@ hashes must be equal); `ci/oracle selfcheck [HOST]` repeats the check. It is hea
   file), `.state/oracle-facts.json` is derived from it and `.state/cfg/` is the host config directory;
 - `unbake` comes from the private venv (`oracle` extra of `pyproject.toml`), never from PATH, and runs with
   `--host .state/unbake.toml`, the host config `hosts/n64recomp/host_config.py` writes from unbake's own template (tools
-  from PATH, `abumas` from `.state/tools`, cache and toolchains inside `.state/`); the operator's
-  `~/.config/unbake/unbake.toml` is never read.
+  from PATH, `abumas` from `.state/tools`, cache and toolchains inside `.state/`, `cores` and `workers` the admitted
+  `JOBS`, never `"auto"`, which sizes the pool from the whole host); the operator's
+  `~/.config/unbake/unbake.toml` is never read. abucache (the decomp Makefile's make admission and unbake's pool)
+  reads `.state/abu-runtime.toml` through `ABU_RUNTIME`, rendered from that host config with the same widths, never
+  the operator's `~/.config/abu/runtime.toml`.

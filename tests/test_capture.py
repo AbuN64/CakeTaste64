@@ -298,11 +298,24 @@ class CaptureTests(unittest.TestCase):
         leaf = '{ name = "leaf", vram = 0x80002000, size = 0x10 },'
         (self.root / "gen" / "v1" / "symbols.toml").write_text(SYMBOLS.replace(root, root + "\n    " + leaf))
         with patch.object(capture, "load_recomp", return_value=self.settings), \
-             patch.object(capture, "run_command", side_effect=self.fake_run):
+             patch.object(capture, "run_command", side_effect=self.fake_run), \
+             patch.dict("os.environ", {"JOBS": "4"}):
             got = capture.capture_many(self.profile, functions=["root", "leaf", "0x80009999"], version="v1", jobs=2)
         statuses = {row["function"]: row["status"] for row in got["captures"]}
         self.assertEqual(statuses, {"root": "captured", "leaf": "captured", "0x80009999": "repro.function"})
         self.assertEqual((got["jobs"], got["counts"]["captured"]), (2, 2))
+
+    def test_the_capture_width_is_at_most_the_admitted_jobs_and_none_refuses(self):
+        functions = ["root", "0x80009999"]
+        with patch.object(capture, "load_recomp", return_value=self.settings), \
+             patch.object(capture, "run_command", side_effect=self.fake_run):
+            with patch.dict("os.environ", {"JOBS": "1"}):
+                got = capture.capture_many(self.profile, functions=functions, version="v1", jobs=8)
+                self.assertEqual(got["jobs"], 1)
+            for jobs in ("", "0", "auto"):
+                with patch.dict("os.environ", {"JOBS": jobs}), self.assertRaises(TasteError) as refused:
+                    capture.capture_many(self.profile, functions=functions, version="v1", jobs=2)
+                self.assertEqual(refused.exception.key, "repro.jobs")
 
     def test_captures_take_slot_locks_beside_the_repro_lock_and_never_wait_behind_it(self):
         import fcntl

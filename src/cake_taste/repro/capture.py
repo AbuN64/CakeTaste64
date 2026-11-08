@@ -764,6 +764,15 @@ def _capture_group(
         }
 
 
+def admitted_jobs(environ: dict[str, str] | None = None) -> int:
+    """The width Terminal admission gave this process (`JOBS`): no capture runs wider than it, never as wide as the
+    host. Absent, empty or not a positive integer refuses."""
+    value = (os.environ if environ is None else environ).get("JOBS", "")
+    if not value.isdigit() or int(value) < 1:
+        raise TasteError("repro.jobs", f"JOBS={value!r} is not an admitted width; run under Terminal admission")
+    return int(value)
+
+
 def capture_many(
     profile: Any,
     *,
@@ -776,9 +785,10 @@ def capture_many(
     seconds: int | None = None,
     condition: str | None = None,
 ) -> dict[str, Any]:
-    """Capture several functions, `jobs` oracle runs at a time (default: the profile's `jobs`; the slot locks bound
-    the total over every process). Each function ends captured or with its named finding."""
-    width = max(1, jobs or int(_config(profile).get("jobs", 2)))
+    """Capture several functions, `jobs` oracle runs at a time (default: the profile's `jobs`), at most the admitted
+    JOBS (admitted_jobs; none refuses); the slot locks bound the total over every process. Each function ends
+    captured or with its named finding."""
+    width = min(max(1, jobs or int(_config(profile).get("jobs", 2))), admitted_jobs())
     with cache_stages.timed("cake_taste.repro.capture.capture_many.started") as started:
 
         def one(function: str) -> dict[str, Any]:

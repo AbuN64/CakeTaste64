@@ -102,14 +102,25 @@ class Resume(unittest.TestCase):
             script(self.bin / compiler, "#!/bin/sh\n")
         self.calls = self.tmp / "calls.log"
 
-    def build(self, *, fail: bool = False, tree: Path | None = None) -> subprocess.CompletedProcess:
+    def build(
+        self, *, fail: bool = False, tree: Path | None = None, jobs: str | None = "4"
+    ) -> subprocess.CompletedProcess:
         fail_flag = Path(f"{self.calls}.fail")
         fail_flag.unlink(missing_ok=True)
         if fail:
             fail_flag.write_text("")
         env = {**os.environ, **GIT_ENV, "PATH": f"{self.bin}:{os.environ['PATH']}", "CALLS": str(self.calls)}
+        env.pop("JOBS", None)
+        if jobs is not None:
+            env["JOBS"] = jobs
         argv = ["sh", str((tree or self.repo) / "ci/oracle"), "build"]
         return subprocess.run(argv, capture_output=True, text=True, env=env, check=False)
+
+    def test_a_build_without_an_admitted_jobs_refuses_before_any_step(self):
+        done = self.build(jobs=None)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("JOBS is unset", done.stderr)
+        self.assertEqual(self.called(), [])
 
     def called(self) -> list[str]:
         return [line.split()[0] for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
