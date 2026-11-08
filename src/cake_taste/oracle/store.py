@@ -2,8 +2,8 @@
 
 The oracle is deterministic under its virtual clock, so it runs only when its build or the movie changes; every other
 request is served from the store. Every path is found from the repository itself (the main working tree's
-.state/oracle/live for the build, the RageWarsDecomp working copy beside it for the cartridge), never from the
-environment.
+.state/oracle/live for the build, the RageWarsDecomp working copy beside the repository's own top level for the
+cartridge), never from the environment.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from typing import Any
 
 from abucache import stages as cache_stages
 
-from cake_taste import TasteError
+from cake_taste import TasteError, config
 from cake_taste.files import atomic_json, sha256_file
 from cake_taste.oracle import icd
 
@@ -47,7 +47,8 @@ class Layout:
 
 def discover(root: Path, version: str = VERSION) -> Layout:
     """The oracle build, ROM and store of the repository at `root`: the main working tree's .state (the same folder
-    for a checkout and for any worktree of it) and the RageWarsDecomp working copy beside it, the way ci/oracle does."""
+    for a checkout and for any worktree of it) and the RageWarsDecomp working copy beside the repository's own top
+    level (never beside the registered checkout), the way ci/oracle does."""
     git = subprocess.run(
         ["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
         capture_output=True,
@@ -59,7 +60,7 @@ def discover(root: Path, version: str = VERSION) -> Layout:
     main = Path(git.stdout.strip()).parent
     live = main / ".state" / "oracle" / "live"
     host, key = live / "n64host", live / "key"
-    rom = main.parent / "RageWarsDecomp" / "roms" / f"baserom.{version}.z64"
+    rom = config.sibling(root, "RageWarsDecomp") / "roms" / f"baserom.{version}.z64"
     for need, step in (
         (host, "ci/oracle build"),
         (key, "ci/oracle build"),

@@ -84,8 +84,8 @@ does not declare.
 hashes must be equal); `ci/oracle selfcheck [HOST]` repeats the check. It is heavy: run it on host W through
 `mo-terminal Admission Invoke --Class Batch`. Every path comes from the repository, none from the environment:
 
-- the decomp is the working copy `RageWarsDecomp` beside this repository's main working tree (the parent of `git rev-parse --path-format=absolute --git-common-dir`: the same folder for a checkout and for any worktree of it, so a run worktree needs no link; its `roms/` holds the dumps, its history the PINS commit);
-- the state is one git-ignored `.state/` beside the main working tree (`$main/.state`, `$main` found like the decomp): a checkout and every worktree of it share it, so a new run worktree reuses each step whose input digest matches (the step keys are content digests, never a path); builds take `.state/oracle.lock` one at a time;
+- the decomp is the working copy `RageWarsDecomp` beside this repository's own top level (the parent of `git rev-parse --path-format=absolute --show-toplevel`: beside the checkout, or beside a run's worktree, never the registered checkout's, and with no fallback to it; its `roms/` holds the dumps, its history the PINS commit); `RageWarsEnhanced` (the profile's lockstep map) is found the same way;
+- the state is one git-ignored `.state/` beside the main working tree (`$main/.state`, `$main` the parent of `git rev-parse --path-format=absolute --git-common-dir`): a checkout and every worktree of it share it, so a new run worktree reuses each step whose input digest matches (the step keys are content digests, never a path); builds take `.state/oracle.lock` one at a time;
 - the dependencies (N64Recomp, N64ModernRuntime, rt64, AbuMas) are fetched at their PINS into the git-ignored
   `.state/oracle-deps/`; `abumas` is built from the AbuMas source there into `.state/tools/abumas`;
 - the build is `.state/oracle/<sha>/`, `.state/oracle/live` links the self-checked one; the project profile the recompile

@@ -58,22 +58,52 @@ class Profile:
         }
 
 
-def _base(file: Path) -> Path:
-    """The folder a profile's relative paths start from: the profile's own folder, or, for a profile tracked in a git
-    worktree (a run's), the same folder of the main working tree (`git rev-parse --git-common-dir`, the way ci/oracle
-    finds its ROM), because a worktree has no sibling repositories and no .state of its own."""
-    git = ["git", "-C", str(file.parent), "rev-parse", "--path-format=absolute"]
+def top_level(path: Path) -> Path | None:
+    """The top level of the repository `path` is in (`git rev-parse --show-toplevel`), or None outside one."""
     try:
-        top = subprocess.run([*git, "--show-toplevel"], capture_output=True, text=True, check=False)
-        common = subprocess.run([*git, "--git-common-dir"], capture_output=True, text=True, check=False)
+        done = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--path-format=absolute", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
     except OSError:
+        return None
+    return None if done.returncode else Path(done.stdout.strip()).resolve()
+
+
+def sibling(root: Path, name: str) -> Path:
+    """The sibling repository `name` beside the top level of the repository `root` is in: the folder the checkout (or
+    the run's worktree) itself sits in, never the registered checkout a worktree's git common dir points at, and no
+    fallback to it. Refused outside a git repository."""
+    top = top_level(root)
+    if top is None:
+        raise TasteError("config.sibling", f"{root} is not in a git repository, so {name} cannot be found beside it")
+    return top.parent / name
+
+
+def _base(file: Path, path: Path) -> Path:
+    """The folder a profile's relative `path` starts from: the profile's own folder, except that a path staying inside
+    the repository (the git-ignored per-host `.state` cache) of a profile tracked in a git worktree (a run's) starts
+    from the same folder of the main working tree (`git rev-parse --git-common-dir`, the way ci/oracle finds its
+    `.state`), because the cache is shared by every worktree of one clone. A path that leaves the repository is a
+    sibling repository (RageWarsDecomp, RageWarsEnhanced) and resolves beside the repository's own top level (`git
+    rev-parse --show-toplevel`), here from the profile's own folder; it never falls back to the registered checkout."""
+    here = file.parent.resolve()
+    top = top_level(here)
+    if top is None or not (here / path).resolve().is_relative_to(top):
         return file.parent
-    if top.returncode or common.returncode:
-        return file.parent
-    main = Path(common.stdout.strip()).parent
     try:
-        return main / file.parent.relative_to(Path(top.stdout.strip()).resolve())
-    except ValueError:
+        common = subprocess.run(
+            ["git", "-C", str(here), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if common.returncode:
+            return file.parent
+        return Path(common.stdout.strip()).parent / here.relative_to(top)
+    except (OSError, ValueError):
         return file.parent
 
 
@@ -82,7 +112,7 @@ def _path(file: Path, key: str, value: Any) -> Path:
         raise ConfigError(file, key, "expected a nonempty path string")
     try:
         path = Path(value).expanduser()
-        return (path if path.is_absolute() else _base(file) / path).resolve()
+        return (path if path.is_absolute() else _base(file, path) / path).resolve()
     except (OSError, RuntimeError) as exc:
         raise ConfigError(file, key, str(exc)) from exc
 
@@ -127,7 +157,7 @@ def load_profile(path: Path) -> Profile:
     runtime = _path(file, "runtime_root", value["runtime_root"])
     output = _path(file, "output_root", value["output_root"])
     if not project.is_dir():
-        raise ConfigError(file, "project_root", "directory does not exist")
+        raise ConfigError(file, "project_root", f"directory does not exist: {project}")
     if runtime.is_relative_to(project) or output.is_relative_to(project):
         raise ConfigError(
             file, "runtime_root/output_root", "runtime and evidence must stay outside the target source tree"

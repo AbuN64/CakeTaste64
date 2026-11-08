@@ -54,7 +54,8 @@ class Shape(unittest.TestCase):
     def test_the_decomp_is_the_sibling_repo_and_the_state_is_beside_the_main_working_tree(self):
         text = ORACLE.read_text()
         self.assertIn("git rev-parse --path-format=absolute --git-common-dir", text)
-        self.assertIn('decomp=$(dirname "$main")/RageWarsDecomp', text)
+        self.assertIn("git rev-parse --path-format=absolute --show-toplevel", text)
+        self.assertIn('decomp=$(dirname "$top")/RageWarsDecomp', text)
         self.assertIn("state=$main/.state", text)
         for name in ("taste-profile.json", "oracle-facts.json", "oracle-deps", "oracle/live"):
             self.assertIn(name, text)
@@ -169,22 +170,30 @@ class Refusals(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("RageWarsDecomp is missing; clone RageWarsDecomp beside this repository", done.stderr)
 
-    def test_the_decomp_is_found_beside_the_main_working_tree_for_a_checkout_and_for_a_worktree(self):
+    def test_the_decomp_is_found_beside_each_trees_own_top_level_for_a_checkout_and_for_a_worktree(self):
         repo = self.tree()
         git(repo, "add", "ci/oracle")
         git(repo, "commit", "-q", "-m", "c")
         worktree = repo.parent / "runs/card/repo"
         git(repo, "worktree", "add", "-q", "-b", "card", str(worktree))
-        for tree in (repo, worktree):
-            done = self.run_oracle(tree, "build")
-            self.assertEqual(done.returncode, 1)
-            self.assertIn(f"the decomp working copy {repo.parent}/RageWarsDecomp is missing", done.stderr)
-        (repo.parent / "RageWarsDecomp/.git").mkdir(parents=True)
-        for tree in (repo, worktree):
-            self.assertIn(
-                f"{repo.parent}/RageWarsDecomp/roms/baserom.us-rev1.z64 is missing",
-                self.run_oracle(tree, "build").stderr,
-            )
+        (repo.parent / "RageWarsDecomp/.git").mkdir(parents=True)  # beside the registered checkout only: not used
+        self.assertIn(
+            f"the decomp working copy {worktree.parent}/RageWarsDecomp is missing",
+            self.run_oracle(worktree, "build").stderr,
+        )
+        self.assertIn(
+            f"{repo.parent}/RageWarsDecomp/roms/baserom.us-rev1.z64 is missing", self.run_oracle(repo, "build").stderr
+        )
+        decomp = repo.parent / "RageWarsDecomp"
+        git(decomp, "init", "-q")
+        git(decomp, "commit", "-q", "--allow-empty", "-m", "base")
+        sibling = worktree.parent / "RageWarsDecomp"
+        git(decomp, "worktree", "add", "-q", "-b", "card", str(sibling))
+        self.assertTrue((sibling / ".git").is_file())
+        self.assertIn(
+            f"{worktree.parent}/RageWarsDecomp/roms/baserom.us-rev1.z64 is missing",
+            self.run_oracle(worktree, "build").stderr,
+        )
 
     def test_a_missing_rom_in_the_sibling_is_refused_naming_the_file(self):
         repo = self.tree()

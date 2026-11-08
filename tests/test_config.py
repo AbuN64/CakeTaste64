@@ -39,9 +39,10 @@ class ConfigTests(unittest.TestCase):
         self.file.write_text(json.dumps(self.value))
         return load_profile(self.file)
 
-    def test_worktree_profile_resolves_against_the_main_tree(self) -> None:
+    def test_worktree_profile_finds_siblings_beside_its_top_level_and_the_cache_at_the_main_tree(self) -> None:
         main, wt = self.root / "work" / "Main", self.root / "wt"
         (self.root / "work" / "Sibling").mkdir(parents=True)
+        (self.root / "Sibling").mkdir()
         (main / "hosts").mkdir(parents=True)
         profile = main / "hosts" / "p.json"
         self.value.update(project_root="../../Sibling", runtime_root="../.state/run", output_root="../.state/run")
@@ -53,9 +54,9 @@ class ConfigTests(unittest.TestCase):
         subprocess.run([*git, "worktree", "add", "-q", "-b", "card", str(wt)], check=True)
         loaded = load_profile(wt / "hosts" / "p.json")
         self.assertEqual(loaded.source_file, (wt / "hosts" / "p.json").resolve())
-        self.assertEqual(loaded.project_root, (self.root / "work" / "Sibling").resolve())
-        self.assertEqual(loaded.runtime_root, (main / ".state" / "run").resolve())
-        self.assertEqual(load_profile(profile).project_root, loaded.project_root)
+        self.assertEqual(loaded.project_root, (self.root / "Sibling").resolve())  # beside the worktree's own top level
+        self.assertEqual(loaded.runtime_root, (main / ".state" / "run").resolve())  # the per-host cache stays at main
+        self.assertEqual(load_profile(profile).project_root, (self.root / "work" / "Sibling").resolve())
 
     def test_explicit_paths_and_fresh_sections(self) -> None:
         profile = self.load()

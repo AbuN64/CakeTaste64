@@ -1,9 +1,9 @@
 #!/bin/sh
 # ci/oracle build | selfcheck [HOST]: the N64Recomp oracle (n64host) of this tree, built and self-checked. Every path
 # is found from the repository itself, no environment input:
-#   RageWarsDecomp      the decomp working copy beside this repository's main working tree: the parent of
-#                       `git rev-parse --git-common-dir`, the same folder for a checkout and for any worktree of it, so a run
-#                       worktree needs no link (roms/ holds the cartridge dumps; its git history
+#   RageWarsDecomp      the decomp working copy beside this repository's own top level (`git rev-parse --show-toplevel`):
+#                       beside the checkout, or beside a run's worktree, never beside the registered checkout a worktree's
+#                       common dir points at, and no fallback to it (roms/ holds the cartridge dumps; its git history
 #                       holds the PINS RageWars commit the oracle is recompiled from)
 #   .state/             the per-host state folder beside the main working tree (git-ignored): $main/.state, the same folder for a
 #                       checkout and for every worktree of it, so a new run worktree reuses a step whose input digest matches
@@ -24,7 +24,8 @@ root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
 main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 state=$main/.state
-decomp=$(dirname "$main")/RageWarsDecomp
+top=$(git rev-parse --path-format=absolute --show-toplevel)
+decomp=$(dirname "$top")/RageWarsDecomp
 version=us-rev1
 rom=$decomp/roms/baserom.$version.z64
 profile=$root/hosts/n64recomp/ragewars.profile.json
@@ -110,7 +111,7 @@ host_build() {  # CMAKE_ARG...: configure and build the host in the shared ninja
 }
 
 build() {
-  test -d "$decomp/.git" || { echo "oracle: the decomp working copy $decomp is missing; clone RageWarsDecomp beside this repository" >&2; exit 1; }
+  test -e "$decomp/.git" || { echo "oracle: the decomp working copy $decomp is missing; clone RageWarsDecomp beside this repository" >&2; exit 1; }
   test -e "$rom" || { echo "oracle: $rom is missing (the decomp's roms/ holds the dumps)" >&2; exit 1; }
   major=$(sed -n 's/^gcc_major=//p' hosts/n64recomp/TOOLCHAIN)
   for tool in gcc-$major g++-$major; do
